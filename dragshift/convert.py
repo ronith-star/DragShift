@@ -77,11 +77,45 @@ def flatten(im: Image.Image, bg=(255, 255, 255)) -> Image.Image:
     return im.convert("RGB") if im.mode != "RGB" else im
 
 
-def save_image(im: Image.Image, out: Path, target: str, quality: int | None = None, exif=None) -> None:
+META_TARGETS = {"JPG", "PNG", "WEBP", "TIFF", "HEIC", "AVIF"}  # can hold a colour profile + EXIF
+ICC_SPACE = {"RGB": b"RGB ", "RGBA": b"RGB ", "P": b"RGB ", "L": b"GRAY", "LA": b"GRAY"}
+
+
+def source_meta(path: str | Path) -> tuple[bytes, bytes]:
+    """(colour profile, EXIF) stored in an image file, b"" where there's none."""
+    try:
+        with Image.open(path) as im:
+            return im.info.get("icc_profile") or b"", im.info.get("exif") or b""
+    except Exception:
+        return b"", b""
+
+
+def clean_exif(raw: bytes, size: tuple[int, int]) -> bytes:
+    """Source EXIF made fit for a new file: the pixels are already upright (orientation 1),
+    the size tags match, and there's no embedded thumbnail (tobytes never writes one), which
+    could still show the uncropped or unredacted picture."""
+    try:
+        ex = Image.Exif()
+        ex.load(raw)
+        ex[0x0112] = 1
+        sub = ex.get_ifd(0x8769)
+        if 0xA002 in sub:
+            sub[0xA002], sub[0xA003] = size
+        return ex.tobytes()
+    except Exception:
+        return b""  # unreadable EXIF: leave it out rather than fail the save
+
+
+def save_image(im: Image.Image, out: Path, target: str, quality: int | None = None, exif=None,
+               icc=None) -> None:
+    """exif / icc: None carries over what `im` came with (open_image keeps the source's
+    colour profile and EXIF), b"" leaves it out."""
     from .util import CONFIG
     quality = quality or int(CONFIG.get("jpg_quality", 90))
     target = target.upper()
     fmt = PIL_FORMAT[target]
+    icc = im.info.get("icc_profile") if icc is None else icc
+    exif = im.info.get("exif") if exif is None else exif
     if target in NO_ALPHA:
         im = flatten(im)
     kw: dict = {}
@@ -97,8 +131,13 @@ def save_image(im: Image.Image, out: Path, target: str, quality: int | None = No
         kw["sizes"] = [(s, s) for s in (16, 24, 32, 48, 64, 128, 256) if s <= side]
     if target == "PDF":
         kw["resolution"] = 150.0
-    if exif and target in ("JPG", "WEBP", "PNG", "TIFF"):
-        kw["exif"] = exif
+    if target in META_TARGETS:
+        # always pass these, even empty: the HEIC writer otherwise copies whatever im.info holds
+        none = None if target == "HEIC" else b""
+        kw["icc_profile"] = icc if icc and icc[16:20] == ICC_SPACE.get(im.mode) else none
+        kw["exif"] = (clean_exif(exif, im.size) if exif else b"") or none
+        if target == "HEIC":
+            kw["xmp"] = None
     atomic_save(lambda dst: im.save(dst, fmt, **kw), out)
 
 

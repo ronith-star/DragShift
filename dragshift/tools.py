@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QColorDialog, QComboBox,
                                QVBoxLayout, QWidget)
 
 from . import imaging
-from .convert import open_image, open_preview
+from .convert import clean_exif, open_image, open_preview
 from .glass import pil_from_qimage, qimage_from_pil
 from .util import file_size, human_size, sibling
 from .window import GlassWindow, ImageView
@@ -868,7 +868,8 @@ class RedactWindow(ToolWindow):
         label = {"black": "black boxes", "pixelate": "pixelated", "blur": "blurred"}[mode]
 
         def work():
-            return [imaging.save_like(imaging.redact(open_image(path), boxes, mode), path, "Redacted")]
+            return [imaging.save_like(imaging.redact(open_image(path), boxes, mode), path, "Redacted",
+                                      keep_metadata=False)]
         self.run(work, "Redacting…", f"{len(boxes)} area{'s' if len(boxes) != 1 else ''} {label}")
 
 
@@ -1107,6 +1108,10 @@ class CompressWindow(ToolWindow):
         super().__init__("Compress", paths, notify, size=(640, 580))
         self.orig_total = sum(file_size(p) for p in self.paths)
         self.pv = open_preview(self.path, 1600)
+        # estimates scale the preview's bytes up to full size, but the colour profile and EXIF
+        # don't grow with the pixels: estimate without them, then add them once
+        icc, exif = self.pv.info.pop("icc_profile", None), self.pv.info.pop("exif", None)
+        self.meta_bytes = len(icc or b"") + len(clean_exif(exif, self.pv.size) if exif else b"")
         with Image.open(self.path) as im:
             self.full_px = im.width * im.height
             self.full_long = max(im.size)
@@ -1224,12 +1229,12 @@ class CompressWindow(ToolWindow):
         px_ratio = (out_long / max(im.size)) ** 2
         if self.mode.checkedId() == 1:
             limit = self.TARGETS[self.tgrp.checkedId()][1]
-            q = self._quality_for(im, target, limit, px_ratio)
+            q = self._quality_for(im, target, limit - self.meta_bytes, px_ratio)
             note = f"quality ≈ {q}"
         else:
             q = self.q.value()
             note = ""
-        n = int(imaging.encode_size(im, target, q) * px_ratio)
+        n = int(imaging.encode_size(im, target, q) * px_ratio) + self.meta_bytes
         buf = io.BytesIO()
         if target == "PNG":
             im.convert("RGBA").quantize(colors=max(16, min(256, int(q * 2.56)))).save(buf, "PNG")

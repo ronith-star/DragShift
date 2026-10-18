@@ -3,7 +3,7 @@ result summaries, output folder setting, liquid renderer."""
 from pathlib import Path
 
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 from dragshift import convert, imaging, liquid, report
 from dragshift.util import CONFIG, UserError
@@ -126,3 +126,60 @@ def test_liquid_render_shapes():
         assert img.size == (200, 200)
     img, _ = liquid.render(bg, liquid.sdf_circle(200, 200, 100, 100, 50))
     assert img.getpixel((100, 100))[3] == 255 and img.getpixel((2, 2))[3] == 0
+
+
+# ---------------------------------------------------------------- colour profile + EXIF carry-over
+def phone_photo(tmp_path, orientation=1) -> tuple[Path, bytes]:
+    """A JPEG like a phone's: colour profile, date taken, camera, GPS."""
+    from PIL import ImageCms
+    icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    im = Image.new("RGB", (300, 200), (230, 40, 40))
+    ex = Image.Exif()
+    ex[0x0110] = "iPhone 15"
+    ex[0x0112] = orientation
+    ex.get_ifd(0x8769)[0x9003] = "2026:10:01 12:00:00"
+    ex[0x8825] = {1: "N", 2: (39.0, 57.0, 0.0), 3: "W", 4: (75.0, 11.0, 0.0)}
+    p = tmp_path / "Phone.jpg"
+    im.save(p, quality=95, icc_profile=icc, exif=ex)
+    return p, icc
+
+
+def test_conversions_keep_colour_profile_and_exif(tmp_path):
+    p, icc = phone_photo(tmp_path)
+    outs = [convert.convert(p, "image", t)[0] for t in ("PNG", "WEBP", "TIFF", "HEIC", "AVIF")]
+    outs += [imaging.compress_to(p, 70, None, t) for t in ("JPG", "PNG", "WEBP")]
+    outs.append(convert.convert(outs[3], "image", "JPG")[0])  # HEIC → JPG
+    for out in outs:
+        with Image.open(out) as im:
+            assert im.info.get("icc_profile") == icc, out.name
+            assert imaging.metadata_summary(out).get("Taken") == "2026:10:01 12:00:00", out.name
+
+
+def test_rotated_photo_is_upright_with_orientation_reset(tmp_path):
+    p, _ = phone_photo(tmp_path, orientation=6)  # stored sideways, shown rotated 90°
+    out = convert.convert(p, "image", "PNG")[0]
+    with Image.open(out) as im:
+        assert im.size == (200, 300) and im.getexif().get(0x0112) == 1
+
+
+def test_redact_and_clean_drop_exif_but_keep_colour_profile(tmp_path):
+    p, icc = phone_photo(tmp_path)
+    heic = convert.convert(p, "image", "HEIC")[0]
+    for src in (p, heic):
+        redacted = imaging.save_like(imaging.redact(convert.open_image(src), [(0, 0, 50, 50)]), src,
+                                     "Redacted", keep_metadata=False)
+        for out in (redacted, imaging.strip_image_metadata(src)):
+            assert imaging.count_metadata(out) == (0, False), out.name
+            with Image.open(out) as im:
+                assert im.info.get("icc_profile") == icc, out.name
+
+
+def test_strip_location_keeps_jpeg_quality(tmp_path):
+    p, icc = phone_photo(tmp_path)
+    out = imaging.strip_location(p)
+    with Image.open(p) as a, Image.open(out) as b:
+        assert b.quantization == a.quantization and b.info.get("icc_profile") == icc
+        diff = max(hi for _, hi in ImageChops.difference(a.convert("RGB"), b.convert("RGB")).getextrema())
+        assert diff <= 4
+    s = imaging.metadata_summary(out)
+    assert "Location" not in s and s["Camera"] == "iPhone 15" and s["Taken"] == "2026:10:01 12:00:00"

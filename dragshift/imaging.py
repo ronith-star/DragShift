@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 from PIL.ExifTags import GPSTAGS, TAGS
 
-from .convert import atomic_save, fitz, flatten, open_image, open_pdf, save_image
+from .convert import atomic_save, fitz, flatten, open_image, open_pdf, save_image, source_meta
 from .util import sibling
 
 EXT_TARGET = {".jpg": "JPG", ".jpeg": "JPG", ".png": "PNG", ".webp": "WEBP", ".tif": "TIFF",
@@ -20,13 +20,21 @@ def target_for(path: str | Path) -> str:
     return EXT_TARGET.get(Path(path).suffix.lower(), "PNG")
 
 
-def save_like(im: Image.Image, src: str | Path, label: str, force_ext: str | None = None) -> Path:
-    """Save `im` next to `src` as '<name> <label>.<ext>' in the source's format."""
+def save_like(im: Image.Image, src: str | Path, label: str, force_ext: str | None = None,
+              keep_metadata: bool = True) -> Path:
+    """Save `im` next to `src` as '<name> <label>.<ext>' in the source's format, with the
+    source's colour profile and EXIF. keep_metadata=False: only the colour profile comes along
+    (no EXIF, XMP or comments)."""
     ext = force_ext or Path(src).suffix.lower()
     if ext in (".gif", ".ico"):
         ext = ".png"
     out = sibling(src, label, ext)
-    save_image(im, out, target_for(out))
+    icc, exif = source_meta(src)
+    if not keep_metadata:
+        im = im.copy()
+        im.info = {}  # writers fall back to im.info for comments
+        exif = b""
+    save_image(im, out, target_for(out), exif=exif, icc=icc)
     return out
 
 
@@ -44,7 +52,7 @@ def compress_image(src: str | Path, quality: int = 72, max_side: int | None = No
         colors = max(16, min(256, int(quality * 2.56)))
         q = im.convert("RGBA").quantize(colors=colors, method=Image.Quantize.FASTOCTREE,
                                         dither=Image.Dither.FLOYDSTEINBERG)
-        atomic_save(lambda dst: q.save(dst, "PNG", optimize=True), out)
+        save_image(q, out, "PNG")
     elif tgt in ("BMP", "TIFF", "GIF", "ICO"):
         out = sibling(src, "Compressed", ".jpg")
         save_image(im, out, "JPG", quality=quality)
@@ -72,7 +80,7 @@ def encode_size(im: Image.Image, target: str, quality: int) -> int:
     buf = io.BytesIO()
     if target == "PNG":
         colors = max(16, min(256, int(quality * 2.56)))
-        im.convert("RGBA").quantize(colors=colors, method=Image.Quantize.FASTOCTREE).save(buf, "PNG", optimize=True)
+        save_image(im.convert("RGBA").quantize(colors=colors, method=Image.Quantize.FASTOCTREE), buf, "PNG")
     else:
         save_image(im, buf, target, quality=quality)
     return buf.tell()
@@ -117,7 +125,7 @@ def compress_to(src: str | Path, quality: int, max_side: int | None, target: str
         colors = max(16, min(256, int(quality * 2.56)))
         q = im.convert("RGBA").quantize(colors=colors, method=Image.Quantize.FASTOCTREE,
                                         dither=Image.Dither.FLOYDSTEINBERG)
-        atomic_save(lambda dst: q.save(dst, "PNG", optimize=True), out)
+        save_image(q, out, "PNG")
     else:
         save_image(im, out, target, quality=quality)
     return out
@@ -241,27 +249,39 @@ def count_metadata(src: str | Path) -> tuple[int, bool]:
 
 
 def strip_location(src: str | Path) -> Path:
-    """Remove only GPS tags, keep camera info and everything else."""
+    """Remove only GPS tags, keep camera info, colour profile and everything else."""
+    ext = Path(src).suffix.lower()
     with Image.open(src) as im:
         exif = im.getexif()
         if 0x8825 in exif:
             del exif[0x8825]
         exif_bytes = exif.tobytes()
-    im = open_image(src)
-    out = sibling(src, "No Location", Path(src).suffix.lower() if Path(src).suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff") else ".jpg")
-    # orientation already baked in by open_image → reset tag to 1
-    ex = Image.Exif()
-    ex.load(exif_bytes)
-    ex[0x0112] = 1
-    save_image(im, out, target_for(out), exif=ex.tobytes())
+        if im.format in ("JPEG", "MPO"):
+            # re-encode with the photo's own quantisation tables and subsampling instead of
+            # our quality setting, so the picture is all but untouched; the pixels aren't
+            # rotated, so the orientation tag stays as it is
+            from PIL.JpegImagePlugin import get_sampling
+            im.seek(0)
+            out = sibling(src, "No Location", ext)
+            kw = dict(exif=exif_bytes, qtables=im.quantization, subsampling=get_sampling(im),
+                      optimize=True, progressive=bool(im.info.get("progressive")))
+            if im.info.get("icc_profile"):
+                kw["icc_profile"] = im.info["icc_profile"]
+            xmp = im.info.get("xmp")
+            if xmp and b"GPS" not in xmp:  # XMP can carry the location too
+                kw["xmp"] = xmp
+            atomic_save(lambda dst: im.save(dst, "JPEG", **kw), out)
+            return out
+    im = open_image(src)  # orientation baked in; save_image resets the tag to 1
+    out = sibling(src, "No Location", ext if ext in (".png", ".webp", ".tif", ".tiff") else ".jpg")
+    save_image(im, out, target_for(out), exif=exif_bytes)
     return out
 
 
 def strip_image_metadata(src: str | Path) -> Path:
-    im = open_image(src)  # exif_transpose applied, so orientation is baked in
-    clean = Image.new(im.mode, im.size)
-    clean.paste(im)
-    return save_like(clean, src, "Clean")
+    """Remove EXIF (camera, date, GPS), XMP and comments. The colour profile stays: it isn't
+    personal, and without it the colours shift."""
+    return save_like(open_image(src), src, "Clean", keep_metadata=False)
 
 
 def read_pdf_metadata(src: str | Path) -> dict[str, str]:
