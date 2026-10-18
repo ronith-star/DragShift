@@ -2,9 +2,9 @@
 
 Apple's Liquid Glass is not frosted acrylic. The look comes from:
   * lensing: light bends strongly in a thin bezel at the edges, the middle stays clear
-  * chromatic dispersion in that bezel (R, G and B bend by different amounts) -> rainbow fringe
   * a specular rim that follows the shape, brightest on the side facing the light
-  * a light blur + saturation boost of what's behind, and a tint that adapts to it
+  * a light blur + saturation boost of what's behind, and a neutral tint that follows the
+    system appearance and gets denser over busy or contrasting content, so text stays legible
 
 We have a snapshot of what's behind the window (taken just before it appears), so we can
 actually refract it per pixel with a signed distance field of the shape."""
@@ -21,10 +21,10 @@ from PIL import Image, ImageEnhance, ImageFilter
 class GlassStyle:
     bezel: float = 22.0        # px width of the curved edge where light bends
     strength: float = 16.0     # max displacement in px at the very edge
-    dispersion: float = 0.32   # extra bend for blue vs red (rainbow fringe)
-    blur: float = 2.2          # Liquid Glass stays fairly clear
-    saturation: float = 1.45
-    spec: float = 0.95         # specular rim intensity
+    dispersion: float = 0.0    # extra bend for blue vs red (Apple keeps this ~invisible)
+    blur: float = 3.0          # Liquid Glass stays fairly clear
+    saturation: float = 1.1
+    spec: float = 0.7          # specular rim intensity
     light: tuple[float, float] = (-0.55, -0.83)  # direction *towards* the light (top-left)
 
 
@@ -100,8 +100,10 @@ def luminance(rgb: np.ndarray, mask: np.ndarray | None = None) -> float:
 
 
 def render(backdrop: Image.Image, sdf: np.ndarray, style: GlassStyle = GlassStyle(),
-           tint: tuple[int, int, int, float] | None = None) -> tuple[Image.Image, bool]:
-    """Return (RGBA glass image, is_light). `backdrop` must match sdf's size."""
+           tint: tuple[int, int, int, float] | None = None,
+           dark: bool | None = None) -> tuple[Image.Image, bool]:
+    """Return (RGBA glass image, is_light). `backdrop` must match sdf's size. `dark`: the
+    system appearance (None = follow the backdrop)."""
     h, w = sdf.shape
     bg = backdrop.convert("RGB").resize((w, h)) if backdrop.size != (w, h) else backdrop.convert("RGB")
     soft = bg.filter(ImageFilter.GaussianBlur(style.blur)) if style.blur > 0 else bg
@@ -130,20 +132,16 @@ def render(backdrop: Image.Image, sdf: np.ndarray, style: GlassStyle = GlassStyl
     inside = alpha > 0
     is_light = luminance(np.asarray(bg, np.float32), alpha) > 0.62
 
-    # adaptive tint keeps text legible on any wallpaper
+    # neutral tint in the system appearance; denser when the backdrop contrasts with it
     if tint is None:
-        tint = (236, 232, 246, 0.14) if is_light else (18, 14, 30, 0.26)
+        if dark is None:
+            dark = not is_light
+        tint = (30, 30, 34, 0.62 if is_light else 0.40) if dark else (250, 250, 252, 0.40 if is_light else 0.60)
     tr, tg, tb, ta = tint
     out = out * (1 - ta) + np.array([tr, tg, tb], np.float32) * ta
 
-    if is_light:
-        # on light backgrounds the curved edge reads as a soft grey bevel, so the
-        # white specular line on top of it stays visible
-        out -= (profile ** 1.6)[..., None] * np.array([62, 60, 54], np.float32)
-        out -= (np.clip(1 - depth / 1.6, 0, 1) * (alpha > 0))[..., None] * 40
-    else:
-        # inner bezel glow (light gathering in the curved edge)
-        out += (profile ** 2)[..., None] * 38
+    # light gathering in the curved edge
+    out += (profile ** 2)[..., None] * 26
 
     # specular rim: thin bright line, strongest where the edge faces the light
     lx, ly = style.light

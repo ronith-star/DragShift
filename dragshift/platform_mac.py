@@ -148,6 +148,45 @@ def request_screen_recording() -> bool:
         return False
 
 
+# ---------------------------------------------------------------- Apple's look
+def accent_rgb() -> tuple[int, int, int] | None:
+    """The accent colour picked in System Settings → Appearance."""
+    if not OK:
+        return None
+    try:
+        c = AppKit.NSColor.controlAccentColor().colorUsingColorSpace_(AppKit.NSColorSpace.sRGBColorSpace())
+        return int(c.redComponent() * 255), int(c.greenComponent() * 255), int(c.blueComponent() * 255)
+    except Exception:
+        return None
+
+
+def symbol_png(name: str, px: int, weight: str = "regular") -> bytes | None:
+    """An SF Symbol rendered (monochrome, as a template) at 2x as PNG, or None if unknown."""
+    if not OK:
+        return None
+    try:
+        img = AppKit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, None)
+        if img is None:
+            return None
+        weights = {"light": AppKit.NSFontWeightLight, "regular": AppKit.NSFontWeightRegular,
+                   "medium": AppKit.NSFontWeightMedium, "semibold": AppKit.NSFontWeightSemibold,
+                   "bold": AppKit.NSFontWeightBold}
+        cfg = AppKit.NSImageSymbolConfiguration.configurationWithPointSize_weight_(px, weights.get(weight, 0.0))
+        img = img.imageWithSymbolConfiguration_(cfg)
+        w, h = img.size().width, img.size().height
+        rep = AppKit.NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(
+            None, int(round(w * 2)), int(round(h * 2)), 8, 4, True, False, AppKit.NSDeviceRGBColorSpace, 0, 0)
+        rep.setSize_((w, h))
+        AppKit.NSGraphicsContext.saveGraphicsState()
+        AppKit.NSGraphicsContext.setCurrentContext_(AppKit.NSGraphicsContext.graphicsContextWithBitmapImageRep_(rep))
+        img.drawInRect_(((0, 0), (w, h)))
+        AppKit.NSGraphicsContext.restoreGraphicsState()
+        data = rep.representationUsingType_properties_(AppKit.NSBitmapImageFileTypePNG, {})
+        return bytes(data)
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------- start at login
 AGENT = Path.home() / "Library" / "LaunchAgents" / "com.dragshift.app.plist"
 

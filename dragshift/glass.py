@@ -1,45 +1,152 @@
-"""Liquid-glass look: frosted blur, specular highlights and an iridescent (rainbow)
-rim. Used by the radial menu and every editor window."""
+"""Apple-style look shared by the radial menu, notifications and every window: the system
+font (SF Pro on macOS), SF Symbols, Apple's system colours, and a glass surface painter."""
 from __future__ import annotations
 
 import ctypes
 import os
 import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QImage, QLinearGradient,
-                           QPainter, QPainterPath, QPen, QPixmap, QRadialGradient)
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
+from PySide6.QtGui import (QBrush, QColor, QFont, QGuiApplication, QIcon, QImage, QLinearGradient,
+                           QPainter, QPainterPath, QPen, QPixmap)
 
-# Rainbow stops for the iridescent rim (soft, pastel-ish so it reads as "glass").
-IRIDESCENT = ["#ff6b9d", "#ffb36b", "#ffe66b", "#7dffb0", "#6bd5ff", "#8a7bff", "#e07bff", "#ff6b9d"]
-
-TEXT = "#ffffff"
-TEXT_DIM = "rgba(255,255,255,0.68)"
-ACCENT_A = "#ff8a5c"
-ACCENT_B = "#ff4f8b"
-ACCENT_C = "#8a6bff"
+IS_MAC = sys.platform == "darwin"
+FONT_FAMILY = ".AppleSystemUIFont" if IS_MAC else "Segoe UI Variable Text"
 
 
-def iridescent_pen(center: QPointF, width: float, alpha: int = 200, angle: float = 30) -> QPen:
-    g = QConicalGradient(center, angle)
-    n = len(IRIDESCENT) - 1
-    for i, c in enumerate(IRIDESCENT):
-        col = QColor(c)
-        col.setAlpha(alpha)
-        g.setColorAt(i / n, col)
-    return QPen(QBrush(g), width)
+def font(px: float, weight: QFont.Weight = QFont.Normal) -> QFont:
+    """The system UI font (SF Pro on macOS) at a pixel size."""
+    f = QFont(FONT_FAMILY)
+    f.setPixelSize(max(1, int(round(px))))
+    f.setWeight(weight)
+    return f
 
 
-def iridescent_brush(rect: QRectF, alpha: int = 60) -> QBrush:
-    g = QLinearGradient(rect.topLeft(), rect.bottomRight())
-    n = len(IRIDESCENT) - 1
-    for i, c in enumerate(IRIDESCENT):
-        col = QColor(c)
-        col.setAlpha(alpha)
-        g.setColorAt(i / n, col)
-    return QBrush(g)
+# ---------------------------------------------------------------- system colours
+@dataclass(frozen=True)
+class Theme:
+    dark: bool
+    label: QColor          # primary text
+    label2: QColor         # secondary text
+    label3: QColor         # tertiary text, disabled
+    fill: QColor           # control background on glass
+    fill2: QColor          # hovered control
+    separator: QColor
+    field: QColor          # text fields, popups' rows
+    card: QColor           # grouped-form card on a window
+    popup: QColor          # menus, combo lists, tooltips
+    glass: QColor          # tint over refracted glass (menu, notifications)
+    panel: QColor          # tint over refracted glass for windows (denser, for reading)
+    solid: QColor          # glass stand-in when there's no backdrop to refract
+    accent: QColor
+    green: QColor
+    orange: QColor
+    red: QColor
 
 
+def is_dark() -> bool:
+    try:
+        return QGuiApplication.styleHints().colorScheme() != Qt.ColorScheme.Light
+    except Exception:
+        return True
+
+
+def accent() -> QColor:
+    """The accent colour chosen in System Settings (macOS), else Apple's system blue."""
+    if IS_MAC:
+        from . import platform_mac
+        rgb = platform_mac.accent_rgb()
+        if rgb:
+            return QColor(*rgb)
+    return QColor(10, 132, 255) if is_dark() else QColor(0, 122, 255)
+
+
+def theme() -> Theme:
+    if is_dark():
+        return Theme(True, QColor(255, 255, 255), QColor(235, 235, 245, 158), QColor(235, 235, 245, 82),
+                     QColor(255, 255, 255, 30), QColor(255, 255, 255, 52), QColor(255, 255, 255, 34),
+                     QColor(255, 255, 255, 18), QColor(255, 255, 255, 16), QColor(44, 44, 46, 250),
+                     QColor(18, 18, 22, 70), QColor(26, 26, 30, 150), QColor(36, 36, 40, 242), accent(),
+                     QColor(48, 209, 88), QColor(255, 159, 10), QColor(255, 69, 58))
+    return Theme(False, QColor(0, 0, 0, 222), QColor(60, 60, 67, 160), QColor(60, 60, 67, 82),
+                 QColor(0, 0, 0, 15), QColor(0, 0, 0, 28), QColor(0, 0, 0, 30),
+                 QColor(255, 255, 255, 190), QColor(255, 255, 255, 150), QColor(246, 246, 248, 252),
+                 QColor(255, 255, 255, 90), QColor(246, 246, 248, 170), QColor(240, 240, 244, 245), accent(),
+                 QColor(52, 199, 89), QColor(255, 149, 0), QColor(255, 59, 48))
+
+
+def css(c: QColor) -> str:
+    return f"rgba({c.red()},{c.green()},{c.blue()},{c.alphaF():.3f})"
+
+
+# ---------------------------------------------------------------- SF Symbols
+_SYMBOLS: dict = {}
+
+
+def symbol(name: str, px: int, color: QColor, weight: str = "regular") -> QPixmap | None:
+    """An SF Symbol as a tinted pixmap (macOS), or None elsewhere (callers draw a glyph)."""
+    key = (name, px, color.rgba(), weight)
+    if key in _SYMBOLS:
+        return _SYMBOLS[key]
+    pm = None
+    if IS_MAC:
+        from . import platform_mac
+        data = platform_mac.symbol_png(name, px, weight)
+        if data:
+            img = QImage.fromData(data).convertToFormat(QImage.Format_ARGB32_Premultiplied)
+            p = QPainter(img)
+            p.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            p.fillRect(img.rect(), color)
+            p.end()
+            img.setDevicePixelRatio(2.0)
+            pm = QPixmap.fromImage(img)
+    _SYMBOLS[key] = pm
+    return pm
+
+
+def draw_symbol(p: QPainter, name: str, center: QPointF, px: int, color: QColor,
+                fallback: str = "", weight: str = "regular") -> None:
+    """Draw an SF Symbol centred on `center`; without SF Symbols, draw `fallback` text."""
+    pm = symbol(name, px, color, weight)
+    if pm is not None:
+        w, h = pm.width() / pm.devicePixelRatio(), pm.height() / pm.devicePixelRatio()
+        p.drawPixmap(QRectF(center.x() - w / 2, center.y() - h / 2, w, h), pm, QRectF(pm.rect()))
+    elif fallback:
+        p.save()
+        p.setFont(font(px * 1.1, QFont.DemiBold if weight in ("semibold", "bold") else QFont.Normal))
+        p.setPen(color)
+        p.drawText(QRectF(center.x() - px, center.y() - px, 2 * px, 2 * px), Qt.AlignCenter, fallback)
+        p.restore()
+
+
+def set_symbol(button, name: str, text: str = "", fallback: str = "", px: int = 14) -> None:
+    """Give a button an SF Symbol icon (macOS) next to `text`; elsewhere show `fallback`."""
+    pm = symbol(name, px, theme().label, "medium")
+    if pm is None:
+        button.setText(fallback or text)
+        return
+    button.setIcon(QIcon(pm))
+    button.setIconSize(QSize(int(pm.width() / pm.devicePixelRatio()), int(pm.height() / pm.devicePixelRatio())))
+    button.setText(text)
+
+
+def symbol_file(name: str, px: int, color: QColor, weight: str = "semibold") -> str | None:
+    """An SF Symbol saved as a PNG, for style sheets (`image: url(...)`)."""
+    pm = symbol(name, px, color, weight)
+    if pm is None:
+        return None
+    d = Path(tempfile.gettempdir()) / "dragshift-symbols"
+    d.mkdir(exist_ok=True)
+    f = d / f"{name}-{px}-{weight}-{color.rgba():08x}.png"
+    if not f.exists():
+        pm.save(str(f))
+    return f.as_posix()
+
+
+# ---------------------------------------------------------------- glass surfaces
 def blur_pixmap(pm: QPixmap, radius: int = 18) -> QPixmap:
     """Fast frosted blur: downscale, light box blur via repeated scaling, upscale."""
     if pm.isNull():
@@ -52,128 +159,127 @@ def blur_pixmap(pm: QPixmap, radius: int = 18) -> QPixmap:
     return small.scaled(w, h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
 
 
-def paint_glass(p: QPainter, path: QPainterPath, backdrop: QPixmap | None = None,
-                backdrop_offset: QPointF = QPointF(0, 0), tint: QColor | None = None,
-                rim: bool = True, rainbow_alpha: int = 170, highlight: float = 1.0) -> None:
-    """Paint a liquid-glass surface filling `path`."""
+def paint_glass(p: QPainter, path: QPainterPath, tint: QColor, backdrop: QPixmap | None = None,
+                highlight: float = 1.0) -> None:
+    """A glass surface filling `path`: optional frosted backdrop, a neutral tint, a soft top
+    sheen and a thin specular rim that's brightest on the edges facing the light (top-left),
+    like Apple's Liquid Glass. A hairline keeps light glass visible on light backgrounds."""
     rect = path.boundingRect()
     p.save()
     p.setRenderHint(QPainter.Antialiasing)
     p.setClipPath(path)
-
-    # 1. frosted backdrop (blurred desktop snapshot), slightly magnified = refraction
     if backdrop is not None and not backdrop.isNull():
-        p.save()
-        c = rect.center()
-        p.translate(c)
-        p.scale(1.04, 1.04)
-        p.translate(-c)
-        p.drawPixmap(backdrop_offset, backdrop)
-        p.restore()
-
-    # 2. tint – keeps white text readable on any wallpaper
-    p.fillPath(path, tint or QColor(28, 24, 40, 105))
-
-    # 3. faint rainbow wash across the body
-    p.fillPath(path, iridescent_brush(rect, 26))
-
-    # 4. top specular sheen
-    sheen = QLinearGradient(rect.topLeft(), QPointF(rect.left(), rect.top() + rect.height() * 0.55))
-    sheen.setColorAt(0.0, QColor(255, 255, 255, int(70 * highlight)))
+        p.drawPixmap(QPointF(0, 0), backdrop)
+    p.fillPath(path, tint)
+    sheen = QLinearGradient(rect.topLeft(), QPointF(rect.left(), rect.top() + min(rect.height(), 120) * 0.6))
+    sheen.setColorAt(0.0, QColor(255, 255, 255, int(26 * highlight)))
     sheen.setColorAt(1.0, QColor(255, 255, 255, 0))
     p.fillPath(path, sheen)
-
-    # 5. soft caustic glow lower-right
-    glow = QRadialGradient(QPointF(rect.right() - rect.width() * 0.2, rect.bottom() - rect.height() * 0.15),
-                           max(rect.width(), rect.height()) * 0.55)
-    glow.setColorAt(0.0, QColor(255, 255, 255, int(22 * highlight)))
-    glow.setColorAt(1.0, QColor(255, 255, 255, 0))
-    p.fillPath(path, glow)
+    p.setClipping(False)
+    if tint.lightness() > 160:
+        p.setPen(QPen(QColor(0, 0, 0, 34), 1.0))
+        p.drawPath(path)
+    rim = QLinearGradient(rect.topLeft(), rect.bottomRight())
+    rim.setColorAt(0.0, QColor(255, 255, 255, int(170 * highlight)))
+    rim.setColorAt(0.35, QColor(255, 255, 255, int(40 * highlight)))
+    rim.setColorAt(0.65, QColor(255, 255, 255, int(28 * highlight)))
+    rim.setColorAt(1.0, QColor(255, 255, 255, int(100 * highlight)))
+    p.setPen(QPen(QBrush(rim), 1.0))
+    p.setBrush(Qt.NoBrush)
+    p.drawPath(path)
     p.restore()
 
-    if rim:
-        p.save()
-        p.setRenderHint(QPainter.Antialiasing)
-        # inner bezel glow: a wide, soft white stroke clipped to the inside of the shape
-        p.setClipPath(path)
-        for w, a in ((14, 10), (7, 16), (3, 26)):
-            p.setPen(QPen(QColor(255, 255, 255, int(a * highlight)), w))
-            p.drawPath(path)
-        p.setClipping(False)
-        # specular rim: bright on the edge facing the light (top-left), softer opposite
-        spec = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        spec.setColorAt(0.0, QColor(255, 255, 255, int(235 * min(1.0, highlight))))
-        spec.setColorAt(0.35, QColor(255, 255, 255, 60))
-        spec.setColorAt(0.65, QColor(255, 255, 255, 35))
-        spec.setColorAt(1.0, QColor(255, 255, 255, 150))
-        p.setPen(QPen(QBrush(spec), 1.3))
-        p.drawPath(path)
-        # iridescent dispersion just outside the rim
-        p.setPen(iridescent_pen(rect.center(), 1.4, rainbow_alpha))
-        p.drawPath(path.translated(0.0, 0.0))
-        p.restore()
 
-
-# ---------------------------------------------------------------- Qt stylesheet
-QSS = f"""
-* {{ color: {TEXT}; font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; font-size: 10pt; }}
+# ---------------------------------------------------------------- Qt style sheet
+def qss(t: Theme | None = None) -> str:
+    """Controls in the style of macOS 26: capsule buttons, accent for the primary action and
+    selections, quiet fields, SF Pro throughout."""
+    t = t or theme()
+    a = t.accent
+    hover, pressed = a.lighter(112), a.darker(112)
+    chevron = symbol_file("chevron.up.chevron.down", 9, t.label2)
+    check = symbol_file("checkmark", 9, QColor(255, 255, 255), "bold")
+    up = symbol_file("chevron.up", 8, t.label2)
+    down = symbol_file("chevron.down", 8, t.label2)
+    img = lambda f, w, h: f"image: url({f}); width: {w}px; height: {h}px;" if f else ""
+    return f"""
+* {{ color: {css(t.label)}; font-family: "{FONT_FAMILY}"; font-size: 13px; }}
 QWidget#glassRoot {{ background: transparent; }}
-QLabel#title {{ font-size: 11pt; font-weight: 600; }}
-QLabel#dim, QLabel.dim {{ color: {TEXT_DIM}; font-size: 9pt; }}
-QLabel#section {{ color: {TEXT_DIM}; font-size: 8.5pt; font-weight: 600; letter-spacing: 1px; }}
+QLabel#title {{ font-size: 13px; font-weight: 600; }}
+QLabel#heading {{ font-size: 22px; font-weight: 700; }}
+QLabel#dim, QLabel.dim {{ color: {css(t.label2)}; font-size: 12px; }}
+QLabel#section {{ color: {css(t.label2)}; font-size: 11px; font-weight: 600; }}
+QLabel#big {{ font-size: 26px; font-weight: 700; }}
+QLabel#good {{ color: {css(t.green)}; font-weight: 600; }}
+QLabel#warn {{ color: {css(t.orange)}; font-weight: 600; }}
 QPushButton {{
-  background: rgba(255,255,255,0.13); border: 1px solid rgba(255,255,255,0.30);
-  border-top-color: rgba(255,255,255,0.55); border-bottom-color: rgba(255,255,255,0.16);
-  border-radius: 15px; padding: 6px 15px; min-height: 18px;
+  background: {css(t.fill)}; border: none; border-radius: 12px;
+  padding: 4px 14px; min-height: 16px; font-weight: 500;
 }}
-QPushButton:hover {{ background: rgba(255,255,255,0.22); }}
-QPushButton:pressed {{ background: rgba(255,255,255,0.08); }}
-QPushButton:checked {{
-  background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 rgba(255,138,92,0.85), stop:1 rgba(255,79,139,0.85));
-  border: 1px solid rgba(255,255,255,0.55);
+QPushButton:hover {{ background: {css(t.fill2)}; }}
+QPushButton:pressed {{ background: {css(t.separator)}; }}
+QPushButton:checked {{ background: {css(a)}; color: white; }}
+QPushButton:disabled {{ color: {css(t.label3)}; }}
+QPushButton#primary {{ background: {css(a)}; color: white; font-weight: 600; padding: 4px 18px; }}
+QPushButton#primary:hover {{ background: {css(hover)}; }}
+QPushButton#primary:pressed {{ background: {css(pressed)}; }}
+QPushButton#primary:disabled {{ background: {css(t.fill)}; color: {css(t.label3)}; }}
+QPushButton#swatch {{
+  border-radius: 11px; padding: 0; min-width: 22px; max-width: 22px; min-height: 22px; max-height: 22px;
+  border: 1px solid {css(t.separator)};
 }}
-QPushButton#primary {{
-  background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {ACCENT_A}, stop:0.55 {ACCENT_B}, stop:1 {ACCENT_C});
-  border: 1px solid rgba(255,255,255,0.55); border-top-color: rgba(255,255,255,0.9);
-  font-weight: 600; padding: 7px 20px; border-radius: 16px;
-}}
-QPushButton#primary:hover {{ border: 1px solid #ffffff; }}
-QPushButton#chrome {{ background: transparent; border: none; padding: 2px 8px; font-size: 11pt; border-radius: 6px; }}
-QPushButton#chrome:hover {{ background: rgba(255,80,100,0.6); }}
-QPushButton#swatch {{ border-radius: 12px; padding: 0; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; }}
-QPushButton#swatch:checked {{ border: 2px solid #ffffff; }}
-QSlider::groove:horizontal {{ height: 4px; background: rgba(255,255,255,0.22); border-radius: 2px; }}
-QSlider::sub-page:horizontal {{
-  background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #ff9a6b, stop:0.5 #ff5f9a, stop:1 #8f7bff); border-radius: 2px;
-}}
+QPushButton#swatch:checked {{ border: 2px solid {css(a)}; }}
+QSlider {{ min-height: 22px; }}
+QSlider::groove:horizontal {{ height: 4px; background: {css(t.fill2)}; border-radius: 2px; }}
+QSlider::sub-page:horizontal {{ background: {css(a)}; border-radius: 2px; }}
 QSlider::handle:horizontal {{
-  background: #ffffff; width: 14px; height: 14px; margin: -6px 0; border-radius: 7px;
-  border: 1px solid rgba(0,0,0,0.15);
+  background: #ffffff; width: 20px; height: 20px; margin: -8px 0; border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.16);
 }}
 QSpinBox, QLineEdit, QComboBox {{
-  background: rgba(0,0,0,0.16); border: 1px solid rgba(255,255,255,0.22);
-  border-bottom-color: rgba(255,255,255,0.40);
-  border-radius: 10px; padding: 4px 8px; selection-background-color: {ACCENT_B};
+  background: {css(t.field)}; border: 1px solid {css(t.separator)}; border-radius: 7px;
+  padding: 3px 8px; min-height: 18px; selection-background-color: {css(a)}; selection-color: white;
 }}
-QLineEdit:focus, QSpinBox:focus {{ border: 1px solid rgba(255,255,255,0.7); }}
-QFrame#card {{ background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; }}
-QLabel#big {{ font-size: 17pt; font-weight: 700; }}
-QLabel#good {{ color: #8dffb8; font-weight: 600; }}
-QLabel#warn {{ color: #ffd36b; font-weight: 600; }}
-QComboBox QAbstractItemView {{ background: #2a2438; border: 1px solid rgba(255,255,255,0.25); }}
-QCheckBox::indicator {{ width: 16px; height: 16px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.5); background: rgba(255,255,255,0.1); }}
-QCheckBox::indicator:checked {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {ACCENT_A}, stop:1 {ACCENT_B}); }}
-QTableWidget {{ background: rgba(0,0,0,0.12); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; gridline-color: rgba(255,255,255,0.08); }}
+QLineEdit:focus, QSpinBox:focus {{ border: 1px solid {css(a)}; }}
+QComboBox::drop-down {{ border: none; width: 22px; }}
+QComboBox::down-arrow {{ {img(chevron, 9, 11)} }}
+QSpinBox::up-button, QSpinBox::down-button {{ border: none; background: transparent; width: 16px; }}
+QSpinBox::up-arrow {{ {img(up, 8, 5)} }}
+QSpinBox::down-arrow {{ {img(down, 8, 5)} }}
+QComboBox QAbstractItemView {{
+  background: {css(t.popup)}; border: 1px solid {css(t.separator)}; border-radius: 8px; padding: 4px;
+  selection-background-color: {css(a)}; selection-color: white; outline: none;
+}}
+QCheckBox {{ spacing: 8px; }}
+QCheckBox::indicator {{
+  width: 14px; height: 14px; border-radius: 4px; border: 1px solid {css(t.label3)}; background: {css(t.field)};
+}}
+QCheckBox::indicator:checked {{ background: {css(a)}; border: 1px solid {css(a)}; {img(check, 10, 10)} }}
+QFrame#card {{ background: {css(t.card)}; border: none; border-radius: 12px; }}
+QFrame#hairline {{ background: {css(t.separator)}; border: none; min-height: 1px; max-height: 1px; }}
+QTableWidget {{
+  background: transparent; border: none; gridline-color: transparent;
+  alternate-background-color: {css(t.card)}; selection-background-color: {css(a)};
+}}
+QTableWidget::item {{ padding: 3px 6px; }}
 QHeaderView {{ background: transparent; }}
+QHeaderView::section {{
+  background: transparent; border: none; border-bottom: 1px solid {css(t.separator)};
+  padding: 4px 6px; color: {css(t.label2)}; font-size: 11px; font-weight: 600;
+}}
 QTableCornerButton::section {{ background: transparent; border: none; }}
-QHeaderView::section {{ background: rgba(255,255,255,0.10); border: none; padding: 4px; font-weight: 600; }}
-QScrollBar:vertical {{ background: transparent; width: 8px; }}
-QScrollBar::handle:vertical {{ background: rgba(255,255,255,0.3); border-radius: 4px; min-height: 30px; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar::handle:vertical {{ background: {css(t.label3)}; border-radius: 3px; min-height: 30px; margin: 0 2px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
-QToolTip {{ background: #2a2438; color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 4px; }}
-QMenu {{ background: #2a2438; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 4px; }}
-QMenu::item {{ padding: 6px 18px; border-radius: 5px; }}
-QMenu::item:selected {{ background: rgba(255,255,255,0.15); }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
+QToolTip {{
+  background: {css(t.popup)}; color: {css(t.label)}; border: 1px solid {css(t.separator)};
+  border-radius: 6px; padding: 4px 8px; font-size: 12px;
+}}
+QMenu {{ background: {css(t.popup)}; border: 1px solid {css(t.separator)}; border-radius: 10px; padding: 5px; }}
+QMenu::item {{ padding: 4px 18px; border-radius: 5px; }}
+QMenu::item:selected {{ background: {css(a)}; color: white; }}
+QMenu::separator {{ height: 1px; background: {css(t.separator)}; margin: 4px 8px; }}
 """
 
 
@@ -253,17 +359,17 @@ class _LiquidSig(QObject):
 
 
 class _LiquidJob(QRunnable):
-    def __init__(self, serial, backdrop, w, h, radius, style):
+    def __init__(self, serial, backdrop, w, h, radius, style, dark):
         super().__init__()
-        self.args = (serial, backdrop, w, h, radius, style)
+        self.args = (serial, backdrop, w, h, radius, style, dark)
         self.sig = _LiquidSig()
 
     def run(self):
-        serial, backdrop, w, h, radius, style = self.args
+        serial, backdrop, w, h, radius, style, dark = self.args
         try:
             from . import liquid
             sdf = liquid.sdf_rounded_rect(w, h, 0.5, 0.5, w - 0.5, h - 0.5, radius)
-            img, light = liquid.render(backdrop, sdf, style)
+            img, light = liquid.render(backdrop, sdf, style, dark=dark)
             try:
                 self.sig.done.emit(serial, qimage_from_pil(img), light)
             except RuntimeError:
@@ -321,7 +427,7 @@ class LiquidBacking(QObject):
         if pil is None:
             return
         self._serial += 1
-        job = _LiquidJob(self._serial, pil, rect.width(), rect.height(), self.radius, self.style)
+        job = _LiquidJob(self._serial, pil, rect.width(), rect.height(), self.radius, self.style, is_dark())
         from .util import keep, release
         job.sig.done.connect(lambda *a, j=job: (release(j), self._done(*a)))
         QThreadPool.globalInstance().start(keep(job))

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QColorDialog, QComboBox,
                                QPushButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem,
                                QVBoxLayout, QWidget)
 
-from . import imaging
+from . import glass, imaging
 from .convert import clean_exif, open_image, open_preview
 from .glass import pil_from_qimage, qimage_from_pil
 from .util import file_size, human_size, sibling
@@ -29,7 +29,7 @@ Notify = Callable[..., None]
 
 # ---------------------------------------------------------------- small widgets
 def section(text: str) -> QLabel:
-    l = QLabel(text.upper())
+    l = QLabel(text)
     l.setObjectName("section")
     return l
 
@@ -252,21 +252,21 @@ class CropView(ImageView):
             y = r.top() + r.height() * i / 3
             p.drawLine(QPointF(x, r.top()), QPointF(x, r.bottom()))
             p.drawLine(QPointF(r.left(), y), QPointF(r.right(), y))
+        # corner handles: thick white brackets, like Photos
+        p.setPen(QPen(QColor(255, 255, 255), 3.5, Qt.SolidLine, Qt.SquareCap, Qt.MiterJoin))
+        k = min(18.0, r.width() / 3, r.height() / 3)
+        for c, dx, dy in ((r.topLeft(), 1, 1), (r.topRight(), -1, 1), (r.bottomLeft(), 1, -1),
+                          (r.bottomRight(), -1, -1)):
+            p.drawPolyline(QPolygonF([QPointF(c.x(), c.y() + dy * k), c, QPointF(c.x() + dx * k, c.y())]))
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor("#ff6a4d"))
-        for pt in (r.topLeft(), r.topRight(), r.bottomLeft(), r.bottomRight()):
-            p.drawEllipse(pt, 5.5, 5.5)
         # live output size badge
         txt = dims_text(round(self.sel.width() * self.k), round(self.sel.height() * self.k))
-        f = QFont("Segoe UI", 1)
-        f.setPixelSize(12)
-        f.setBold(True)
-        p.setFont(f)
+        p.setFont(glass.font(12, QFont.DemiBold))
         w = p.fontMetrics().horizontalAdvance(txt) + 18
         badge = QRectF(r.center().x() - w / 2, r.bottom() - 30, w, 22)
         if badge.top() < r.top() + 4:
             badge.moveTop(r.bottom() + 6)
-        p.setBrush(QColor(20, 16, 32, 190))
+        p.setBrush(QColor(0, 0, 0, 150))
         p.drawRoundedRect(badge, 11, 11)
         p.setPen(QColor(255, 255, 255))
         p.drawText(badge, Qt.AlignCenter, txt)
@@ -296,8 +296,9 @@ class CropWindow(ToolWindow):
         self.body.addWidget(section("Aspect ratio"))
         row, self.grp = toggle_row([n for n, _ in self.RATIOS])
         self.grp.idClicked.connect(self._ratio)
-        for txt, d in (("⟲", -90), ("⟳", 90)):
-            b = QPushButton(txt)
+        for sym, txt, d in (("rotate.left", "⟲", -90), ("rotate.right", "⟳", 90)):
+            b = QPushButton()
+            glass.set_symbol(b, sym, fallback=txt)
             b.setToolTip("Rotate 90°")
             b.clicked.connect(lambda _=False, d=d: self._rotate(d))
             row.addWidget(b)
@@ -456,7 +457,8 @@ class AddBgWindow(ToolWindow):
             b.clicked.connect(lambda _=False, c=cols: self._pick(c))
             self.sw_grp.addButton(b, i)
             sw.addWidget(b, i // 12, i % 12)
-        custom = QPushButton("＋")
+        custom = QPushButton()
+        glass.set_symbol(custom, "plus", fallback="＋", px=11)
         custom.setObjectName("swatch")
         custom.setToolTip("Custom colour")
         custom.clicked.connect(self._custom)
@@ -601,9 +603,7 @@ def draw_shape(p: QPainter, s: Shape, map_pt, scale: float):
     elif s.kind == "Ellipse" and len(pts) == 2:
         p.drawEllipse(QRectF(pts[0], pts[1]).normalized())
     elif s.kind == "Text" and pts:
-        f = QFont("Segoe UI", 1)
-        f.setPixelSize(max(8, int(s.width * 5 * scale)))
-        f.setBold(True)
+        f = glass.font(max(8, int(s.width * 5 * scale)), QFont.Bold)
         p.setFont(f)
         # outline for legibility on any background
         outline = QPainterPath()
@@ -618,10 +618,7 @@ def draw_shape(p: QPainter, s: Shape, map_pt, scale: float):
         p.setPen(QPen(QColor(255, 255, 255), max(1.5, r * 0.12)))
         p.setBrush(col)
         p.drawEllipse(c, r, r)
-        f = QFont("Segoe UI", 1)
-        f.setPixelSize(int(r * 1.15))
-        f.setBold(True)
-        p.setFont(f)
+        p.setFont(glass.font(int(r * 1.15), QFont.Bold))
         lum = col.red() * 0.3 + col.green() * 0.59 + col.blue() * 0.11
         p.setPen(QColor(20, 20, 20) if lum > 170 else QColor(255, 255, 255))
         p.drawText(QRectF(c.x() - r, c.y() - r, 2 * r, 2 * r), Qt.AlignCenter, s.text)
@@ -814,7 +811,7 @@ class RedactView(ImageView):
 
     def paint_overlay(self, p, t):
         if self.cur is not None:
-            p.setPen(QPen(QColor("#ff5f6d"), 1.5, Qt.DashLine))
+            p.setPen(QPen(QColor(255, 69, 58), 1.5, Qt.DashLine))
             p.setBrush(QColor(0, 0, 0, 90))
             p.drawRect(self.rect_to_widget(self.cur))
 
@@ -909,13 +906,17 @@ class EditWindow(ToolWindow):
         self.body.addLayout(grid)
 
         row = QHBoxLayout()
-        auto = QPushButton("✦ Auto")
+        auto = QPushButton()
+        glass.set_symbol(auto, "wand.and.stars", " Auto", "✦ Auto")
         auto.setToolTip("Automatic light and colour")
         auto.clicked.connect(self.auto)
         row.addWidget(auto)
-        for text, fn in (("⟲", lambda: self._rot(-90)), ("⟳", lambda: self._rot(90)),
-                         ("⇋ Flip", lambda: self._flip("h")), ("⇵ Flip", lambda: self._flip("v"))):
-            b = QPushButton(text)
+        for sym, text, fb, fn in (
+                ("rotate.left", "", "⟲", lambda: self._rot(-90)), ("rotate.right", "", "⟳", lambda: self._rot(90)),
+                ("arrow.left.and.right.righttriangle.left.righttriangle.right", " Flip", "⇋ Flip", lambda: self._flip("h")),
+                ("arrow.up.and.down.righttriangle.up.righttriangle.down", " Flip", "⇵ Flip", lambda: self._flip("v"))):
+            b = QPushButton()
+            glass.set_symbol(b, sym, text, fb)
             b.clicked.connect(fn)
             row.addWidget(b)
         self.gray = QPushButton("B&&W")
@@ -1159,7 +1160,7 @@ class CompressWindow(ToolWindow):
             col = QVBoxLayout()
             lab.setFixedSize(270, 170)
             lab.setAlignment(Qt.AlignCenter)
-            lab.setStyleSheet("border-radius: 12px; background: rgba(0,0,0,0.25);")
+            lab.setStyleSheet("border-radius: 12px; background: rgba(128,128,128,0.16);")
             c = QLabel(cap)
             c.setObjectName("dim")
             col.addWidget(lab)

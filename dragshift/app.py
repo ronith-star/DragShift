@@ -8,8 +8,8 @@ import time
 import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QDir, QObject, QPointF, QRunnable, Qt, QThreadPool, QTimer, QUrl, Signal
-from PySide6.QtGui import (QAction, QColor, QCursor, QDesktopServices, QGuiApplication, QIcon, QPainter,
+from PySide6.QtCore import QDir, QObject, QPointF, QRunnable, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtGui import (QAction, QColor, QCursor, QGuiApplication, QIcon, QPainter, QPen,
                            QPixmap)
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QSystemTrayIcon, QWidget
@@ -22,7 +22,6 @@ from .trigger import DragShiftWatcher
 from .util import UserError, category, file_size, human_size, keep, release
 
 APP_NAME = "DragShift"
-TIP_URL = "https://cash.app/$AtikaKadesha"
 VERSION = __version__
 IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
@@ -32,6 +31,12 @@ IPC_NAME = ipc_name()
 GLYPHS = {"Compress": "⇲", "Metadata": "ⓘ", "Redact": "▮", "Crop": "⌗", "Edit": "☼",
           "Annotate": "✎", "Add BG": "▣", "Resize": "⤢", "Split": "✂", "Rotate": "⟳",
           "Merge": "⧉", "Protect": "⚿", "Extract": "⧈"}
+SYMBOLS = {"Compress": "arrow.down.right.and.arrow.up.left", "Metadata": "info.circle",
+           "Redact": "eye.slash", "Crop": "crop", "Edit": "slider.horizontal.3",
+           "Annotate": "pencil.tip.crop.circle", "Add BG": "photo.on.rectangle.angled",
+           "Resize": "arrow.up.left.and.arrow.down.right", "Split": "scissors",
+           "Rotate": "rotate.right", "Merge": "doc.on.doc", "Protect": "lock",
+           "Extract": "photo.stack"}
 
 HINTS = {
     "Compress": "Shrink file size", "Metadata": "View · remove GPS", "Redact": "Hide private info",
@@ -120,7 +125,7 @@ def make_icon() -> QIcon:
     pm.fill(Qt.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.Antialiasing)
-    p.setPen(glass.iridescent_pen(QPointF(32, 32), 7, 255))
+    p.setPen(QPen(glass.accent(), 7))
     p.drawEllipse(QPointF(32, 32), 24, 24)
     p.end()
     return QIcon(pm)
@@ -158,9 +163,9 @@ class DragShiftApp(QObject):
         self.server.newConnection.connect(self._ipc)
 
         self.tray = QSystemTrayIcon(make_tray_icon(), self)
-        self.tray.setToolTip(f"{APP_NAME} — press {self.trigger_label()} while dragging a file")
+        self.tray.setToolTip(f"{APP_NAME}: press {self.trigger_label()} while dragging a file")
         m = QMenu()
-        m.setStyleSheet(glass.QSS)
+        m.setStyleSheet(glass.qss())
         self.act_enabled = QAction("Enabled", m, checkable=True, checked=True)
         self.act_enabled.toggled.connect(lambda on: setattr(self.watcher, "enabled", on))
         m.addAction(self.act_enabled)
@@ -168,7 +173,6 @@ class DragShiftApp(QObject):
         m.addSeparator()
         m.addAction("Settings…", self.open_settings)
         m.addAction("How to use", self.show_welcome)
-        m.addAction("Tip the developer ♥", lambda: QDesktopServices.openUrl(QUrl(TIP_URL)))
         m.addSeparator()
         m.addAction(f"Quit {APP_NAME}", self.qapp.quit)
         self.tray_menu = m
@@ -247,10 +251,12 @@ class DragShiftApp(QObject):
             convert_items.append(Item(t, key=f"convert:{t}", hint=hint))
         rings: dict[str, list[Item]] = {"Convert": convert_items}
         if cat == "image":
-            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", hint=HINTS[n]) for n in IMAGE_TOOLS]
+            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", hint=HINTS[n], symbol=SYMBOLS[n])
+                              for n in IMAGE_TOOLS]
         elif cat == "pdf":
             names = PDF_TOOLS[:3] + (["Merge"] if len(same) > 1 else []) + PDF_TOOLS[3:]
-            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", hint=HINTS[n]) for n in names]
+            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", hint=HINTS[n], symbol=SYMBOLS[n])
+                              for n in names]
         return rings
 
     # ------------------------------------------------------------ actions
@@ -364,7 +370,7 @@ class DragShiftApp(QObject):
 
     def _settings_changed(self):
         self.watcher.set_key(self.settings.get("trigger"))
-        self.tray.setToolTip(f"{APP_NAME} — press {self.trigger_label()} while dragging a file")
+        self.tray.setToolTip(f"{APP_NAME}: press {self.trigger_label()} while dragging a file")
 
     def show_welcome(self):
         self.open_window(WelcomeWindow(self.settings, self.trigger_label()))

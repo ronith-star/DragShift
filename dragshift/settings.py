@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, Signal
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QLabel,
-                               QPushButton, QSlider, QVBoxLayout)
+from PySide6.QtCore import QPointF, QRectF, QSettings, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout,
+                               QWidget)
 
-from . import __version__
+from . import __version__, glass
 from .util import CONFIG
-from .window import GlassWindow
+from .window import GlassWindow, Switch, form_card
 
 IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
@@ -100,74 +102,58 @@ class SettingsWindow(GlassWindow):
     changed = Signal()
 
     def __init__(self, settings: Settings):
-        super().__init__("Settings", size=(520, 470))
+        super().__init__("Settings", size=(500, 440))
         self.s = settings
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(12)
-        r = 0
 
         def combo(options, current):
             c = QComboBox()
             for v, label in options:
                 c.addItem(label, v)
-            idx = max(0, [v for v, _ in options].index(current) if current in [v for v, _ in options] else 0)
-            c.setCurrentIndex(idx)
+            values = [v for v, _ in options]
+            c.setCurrentIndex(values.index(current) if current in values else 0)
             return c
 
-        grid.addWidget(QLabel("Open the menu with"), r, 0)
         self.trigger = combo(TRIGGERS, self.s.get("trigger"))
         self.trigger.currentIndexChanged.connect(lambda _: self._save("trigger", self.trigger.currentData()))
-        grid.addWidget(self.trigger, r, 1)
-        r += 1
-        hint = QLabel("…pressed while you’re dragging a file")
-        hint.setObjectName("dim")
-        grid.addWidget(hint, r, 1)
-        r += 1
-
-        grid.addWidget(QLabel("Save results"), r, 0)
         self.output = combo(OUTPUTS, self.s.get("output"))
         self.output.currentIndexChanged.connect(lambda _: self._save("output", self.output.currentData()))
-        grid.addWidget(self.output, r, 1)
-        r += 1
-
-        grid.addWidget(QLabel("JPG / WebP quality"), r, 0)
-        row = QHBoxLayout()
+        q_row = QHBoxLayout()
         self.q = QSlider(Qt.Horizontal)
         self.q.setRange(60, 100)
         self.q.setValue(self.s.get("jpg_quality"))
+        self.q.setFixedWidth(150)
         self.qv = QLabel(str(self.q.value()))
         self.qv.setObjectName("dim")
-        self.qv.setFixedWidth(30)
+        self.qv.setFixedWidth(26)
+        self.qv.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.q.valueChanged.connect(lambda v: (self.qv.setText(str(v)), self._save("jpg_quality", v)))
-        row.addWidget(self.q)
-        row.addWidget(self.qv)
-        grid.addLayout(row, r, 1)
-        r += 1
-
-        grid.addWidget(QLabel("PDF → image resolution"), r, 0)
+        q_row.addWidget(self.q)
+        q_row.addWidget(self.qv)
         self.dpi = combo(DPIS, self.s.get("pdf_dpi"))
         self.dpi.currentIndexChanged.connect(lambda _: self._save("pdf_dpi", self.dpi.currentData()))
-        grid.addWidget(self.dpi, r, 1)
-        r += 1
+        self.body.addWidget(form_card([
+            ("Open the menu with", "Press it while you’re dragging a file", self.trigger),
+            ("Save results", "", self.output),
+            ("JPG and WebP quality", "", q_row),
+            ("PDF to image resolution", "", self.dpi),
+        ]))
 
+        rows = []
         if IS_WIN or IS_MAC:
-            self.auto = QCheckBox("Start DragShift with Windows" if IS_WIN else "Open DragShift at login")
-            self.auto.setChecked(autostart_enabled())
+            self.auto = Switch(autostart_enabled())
             self.auto.toggled.connect(set_autostart)
-            grid.addWidget(self.auto, r, 1)
-            r += 1
+            rows.append(("Start with Windows" if IS_WIN else "Open at login", "", self.auto))
         if IS_MAC:
             from . import platform_mac
             if not platform_mac.has_screen_recording():
-                glass_btn = QPushButton("Enable full liquid glass…")
-                glass_btn.setToolTip("Lets the glass refract the windows behind it (Screen Recording permission)")
-                glass_btn.clicked.connect(platform_mac.request_screen_recording)
-                grid.addWidget(glass_btn, r, 1)
-                r += 1
-        self.body.addLayout(grid)
+                allow = QPushButton("Allow…")
+                allow.clicked.connect(platform_mac.request_screen_recording)
+                rows.append(("Show windows through the glass",
+                             "Needs Screen Recording. Without it the glass shows your wallpaper.", allow))
+        if rows:
+            self.body.addWidget(form_card(rows))
         self.body.addStretch(1)
-        about = QLabel(f"DragShift {__version__}  ·  originals are never modified")
+        about = QLabel(f"DragShift {__version__}  ·  originals are never changed")
         about.setObjectName("dim")
         foot = QHBoxLayout()
         foot.addWidget(about)
@@ -183,54 +169,98 @@ class SettingsWindow(GlassWindow):
         self.changed.emit()
 
 
+class SymbolBadge(QWidget):
+    """An SF Symbol in a soft accent-tinted circle."""
+
+    def __init__(self, name: str, fallback: str, parent=None):
+        super().__init__(parent)
+        self.name, self.fallback = name, fallback
+        self.setFixedSize(32, 32)
+
+    def paintEvent(self, e):
+        a = glass.accent()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        bg = QColor(a)
+        bg.setAlpha(46)
+        p.setPen(Qt.NoPen)
+        p.setBrush(bg)
+        p.drawEllipse(QRectF(0, 0, 32, 32))
+        glass.draw_symbol(p, self.name, QPointF(16, 16), 15, a, self.fallback, "medium")
+
+
 class WelcomeWindow(GlassWindow):
     def __init__(self, settings: Settings, trigger_label: str = "Shift"):
-        super().__init__("Welcome to DragShift", size=(560, 430))
+        super().__init__("", size=(500, 510))
         self.s = settings
+        icon = QLabel()
+        icon.setAlignment(Qt.AlignCenter)
+        pm = QPixmap(str(Path(__file__).with_name("assets") / "dragshift.png"))
+        if not pm.isNull():
+            pm = pm.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pm.setDevicePixelRatio(2.0)
+            icon.setPixmap(pm)
+        self.body.addWidget(icon)
+        head = QLabel("Welcome to DragShift")
+        head.setObjectName("heading")
+        head.setAlignment(Qt.AlignCenter)
+        self.body.addWidget(head)
+        sub = QLabel("Convert and edit any file, right from a drag.")
+        sub.setObjectName("dim")
+        sub.setAlignment(Qt.AlignCenter)
+        self.body.addWidget(sub)
+        self.body.addSpacing(6)
+
+        where = "in Finder or on the desktop" if IS_MAC else "in File Explorer or on the desktop"
         steps = [
-            ("1", "Start dragging any file", "in Finder or on the desktop" if IS_MAC else "in File Explorer or on the desktop"),
-            ("2", f"Press {trigger_label}", "the glass menu opens right under your cursor"),
-            ("3", "Drop it on a slice", "the result is saved next to the original"),
-            ("⇄", f"Tap {trigger_label} again", "to switch between Convert and Tools"),
+            ("hand.draw", "1", "Start dragging any file", where),
+            ("shift", "⇧", f"Press {trigger_label}", "The menu opens right under your cursor"),
+            ("tray.and.arrow.down", "↓", "Drop it on a button", "The result is saved next to the original"),
+            ("arrow.left.arrow.right", "⇄", f"Tap {trigger_label} again", "To switch between Convert and Tools"),
         ]
-        for n, head, sub in steps:
+        rows = QVBoxLayout()
+        rows.setSpacing(12)
+        for sym, fb, title, desc in steps:
             row = QHBoxLayout()
-            badge = QLabel(n)
-            badge.setAlignment(Qt.AlignCenter)
-            badge.setFixedSize(34, 34)
-            badge.setStyleSheet("background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #ff8a5c, stop:1 #ff4f8b);"
-                                "border-radius: 17px; font-weight: 700; font-size: 12pt;")
-            row.addWidget(badge)
-            col = QVBoxLayout()
-            col.setSpacing(0)
-            h = QLabel(head)
-            h.setStyleSheet("font-size: 12pt; font-weight: 600;")
-            d = QLabel(sub)
+            row.setSpacing(12)
+            row.addWidget(SymbolBadge(sym, fb), 0, Qt.AlignTop)
+            text = QVBoxLayout()
+            text.setSpacing(1)
+            h = QLabel(title)
+            h.setStyleSheet("font-weight: 600;")
+            d = QLabel(desc)
             d.setObjectName("dim")
-            col.addWidget(h)
-            col.addWidget(d)
-            row.addSpacing(8)
-            row.addLayout(col, 1)
-            self.body.addLayout(row)
+            text.addWidget(h)
+            text.addWidget(d)
+            row.addLayout(text, 1)
+            rows.addLayout(row)
+        box = QHBoxLayout()
+        box.addSpacing(36)
+        box.addLayout(rows, 1)
+        box.addSpacing(20)
+        self.body.addLayout(box)
         self.body.addStretch(1)
         if IS_MAC:
             from . import platform_mac
             if not platform_mac.has_screen_recording():
-                note = QLabel("Optional: allow Screen Recording so the glass can refract the windows "
-                              "behind it (otherwise it shows your wallpaper). DragShift never saves or sends it.")
-                note.setObjectName("dim")
-                note.setWordWrap(True)
-                self.body.addWidget(note)
-                b = QPushButton("Allow Screen Recording…")
+                note = QHBoxLayout()
+                t = QLabel("Optional: allow Screen Recording so the glass can show the windows behind "
+                           "it. DragShift never saves or sends it.")
+                t.setObjectName("dim")
+                t.setWordWrap(True)
+                note.addWidget(t, 1)
+                b = QPushButton("Allow…")
                 b.clicked.connect(platform_mac.request_screen_recording)
-                self.body.addWidget(b, 0, Qt.AlignLeft)
+                note.addWidget(b, 0, Qt.AlignVCenter)
+                self.body.addLayout(note)
         foot = QHBoxLayout()
         if IS_WIN or IS_MAC:
-            self.auto = QCheckBox("Start with Windows" if IS_WIN else "Open at login")
-            self.auto.setChecked(True)
+            self.auto = Switch(True)
             foot.addWidget(self.auto)
+            foot.addSpacing(4)
+            foot.addWidget(QLabel("Start with Windows" if IS_WIN else "Open at login"))
         foot.addStretch(1)
-        ok = QPushButton("Got it")
+        ok = QPushButton("Get Started")
         ok.setObjectName("primary")
         ok.clicked.connect(self._done)
         foot.addWidget(ok)
