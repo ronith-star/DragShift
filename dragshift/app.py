@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import time
@@ -10,7 +11,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QDir, QObject, QPointF, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import (QAction, QColor, QCursor, QGuiApplication, QIcon, QPainter, QPen,
-                           QPixmap)
+                           QPixmap, QPolygonF)
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QSystemTrayIcon, QWidget
 
@@ -98,18 +99,17 @@ def make_tray_icon() -> QIcon:
     pm.fill(Qt.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.Antialiasing)
-    from PySide6.QtGui import QPen
-    p.setPen(QPen(QColor(0, 0, 0), 4.5))
-    p.drawEllipse(QPointF(22, 22), 14, 14)
+    # the app icon, simplified: a hub with the Shift arrow cut out, ringed by eight buttons
     p.setPen(Qt.NoPen)
     p.setBrush(QColor(0, 0, 0))
-    p.drawEllipse(QPointF(22, 22), 5, 5)
-    for a in range(0, 360, 45):  # petal gaps
-        import math
-        x, y = 22 + 14 * math.cos(math.radians(a + 22.5)), 22 + 14 * math.sin(math.radians(a + 22.5))
-        p.setCompositionMode(QPainter.CompositionMode_Clear)
-        p.drawEllipse(QPointF(x, y), 2.2, 2.2)
-        p.setCompositionMode(QPainter.CompositionMode_SourceOver)
+    p.drawEllipse(QPointF(22, 22), 11, 11)
+    for i in range(8):
+        a = math.radians(90 - i * 45)
+        p.drawEllipse(QPointF(22 + 19 * math.cos(a), 22 - 19 * math.sin(a)), 2.4, 2.4)
+    p.setCompositionMode(QPainter.CompositionMode_Clear)
+    p.drawPolygon(QPolygonF([QPointF(22, 14), QPointF(29, 21.5), QPointF(25, 21.5), QPointF(25, 28.5),
+                             QPointF(19, 28.5), QPointF(19, 21.5), QPointF(15, 21.5)]))
+    p.setCompositionMode(QPainter.CompositionMode_SourceOver)
     p.end()
     pm.setDevicePixelRatio(2.0)
     icon = QIcon(pm)
