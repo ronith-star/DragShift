@@ -314,16 +314,20 @@ class RadialMenu(QWidget):
         return int(rel // (360.0 / n)) % n
 
     def _set_hover(self, h: int, pos: QPointF | None = None):
+        moved = False
         if pos is not None:
+            moved = (QPointF(pos) - self.cursor_pos).manhattanLength() > 3
             self.cursor_pos = QPointF(pos)
         if h != self.hover:
             self.hover = h
             if h >= 0:
-                self.hub_armed = True  # visited a petal: hovering the hub may now flip rings
+                self.hub_armed = True  # visited a segment: resting on the hub may now flip rings
             if h == -2 and self.hub_armed and len(self.ring_names) > 1:
                 self.hub_timer.start()
             else:
                 self.hub_timer.stop()
+        elif h == -2 and moved and self.hub_timer.isActive():
+            self.hub_timer.start()     # still crossing the hub: only a pause on it flips the ring
         self.update()
 
     # ------------------------------------------------------------ drag & drop
