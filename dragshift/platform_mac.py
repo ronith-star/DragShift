@@ -36,6 +36,22 @@ def key_down(name: str) -> bool:
     return bool(OK and AppKit.NSEvent.modifierFlags() & KEY_FLAGS.get(name, SHIFT))
 
 
+FILE_TYPES = {"public.file-url", "NSFilenamesPboardType"}
+
+
+def drag_pasteboard() -> tuple[int, bool]:
+    """(change count, holds files) of the system drag pasteboard. Finder writes it when a file
+    drag starts; moving a window or selecting text doesn't, and dragging text writes no file
+    type. Only the list of types is read, never the contents."""
+    if not OK:
+        return 0, False
+    try:
+        pb = AppKit.NSPasteboard.pasteboardWithName_(AppKit.NSPasteboardNameDrag)
+        return int(pb.changeCount()), any(str(t) in FILE_TYPES for t in (pb.types() or []))
+    except Exception:
+        return 0, False
+
+
 def escape_down() -> bool:
     if not OK:
         return False
@@ -185,6 +201,81 @@ def symbol_png(name: str, px: int, weight: str = "regular") -> bytes | None:
         return bytes(data)
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------- on-device Vision
+def _cgimage(im):
+    """A PIL image as a CGImage, for Vision."""
+    import io
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    data = buf.getvalue()
+    src = Quartz.CGImageSourceCreateWithData(AppKit.NSData.dataWithBytes_length_(data, len(data)), None)
+    return Quartz.CGImageSourceCreateImageAtIndex(src, 0, None)
+
+
+def _vision(name: str):
+    try:
+        import Vision
+        return getattr(Vision, name, None)
+    except Exception:
+        return None
+
+
+def can_lift_subject() -> bool:
+    """Subject cut-out needs macOS 14 or later."""
+    return OK and _vision("VNGenerateForegroundInstanceMaskRequest") is not None
+
+
+def can_read_text() -> bool:
+    return OK and _vision("VNRecognizeTextRequest") is not None
+
+
+def subject_mask(im):
+    """Mask (PIL "L", same size as `im`) of the picture's subject, found by Apple's on-device
+    Vision, as in Photos' "lift subject"; None if there's no clear subject."""
+    import io
+
+    import Vision
+    from PIL import Image
+    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(_cgimage(im.convert("RGB")), {})
+    req = Vision.VNGenerateForegroundInstanceMaskRequest.alloc().init()
+    ok, err = handler.performRequests_error_([req], None)
+    if not ok:
+        raise RuntimeError(f"Vision couldn't analyse the picture: {err}")
+    results = req.results() or []
+    if not results:
+        return None
+    obs = results[0]
+    buf, err = obs.generateScaledMaskForImageForInstances_fromRequestHandler_error_(obs.allInstances(), handler, None)
+    if buf is None:
+        raise RuntimeError(f"Vision couldn't make the mask: {err}")
+    ci = Quartz.CIImage.imageWithCVPixelBuffer_(buf)
+    cg = Quartz.CIContext.contextWithOptions_(None).createCGImage_fromRect_(ci, ci.extent())
+    png = AppKit.NSBitmapImageRep.alloc().initWithCGImage_(cg).representationUsingType_properties_(
+        AppKit.NSBitmapImageFileTypePNG, {})
+    mask = Image.open(io.BytesIO(bytes(png))).convert("L")
+    return mask if mask.size == im.size else mask.resize(im.size, Image.LANCZOS)
+
+
+def recognize_text(im) -> str:
+    """Text in a picture, read by Apple's on-device Vision (Live Text), in reading order."""
+    import Vision
+    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(_cgimage(im.convert("RGB")), {})
+    req = Vision.VNRecognizeTextRequest.alloc().init()
+    req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+    req.setUsesLanguageCorrection_(True)
+    if req.respondsToSelector_("setAutomaticallyDetectsLanguage:"):
+        req.setAutomaticallyDetectsLanguage_(True)
+    ok, err = handler.performRequests_error_([req], None)
+    if not ok:
+        raise RuntimeError(f"Vision couldn't read the picture: {err}")
+    lines = []
+    for obs in req.results() or []:
+        top = obs.topCandidates_(1)
+        if top:
+            lines.append(str(top[0].string()))
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------- start at login

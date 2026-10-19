@@ -16,6 +16,7 @@ from PIL import ImageGrab
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from dragshift.radial import R_IN, R_OUT, SIZE as MENU_SIZE  # noqa: E402
 user32 = ctypes.windll.user32 if sys.platform == "win32" else None
 try:  # the Windows console is cp1252; never let a "→" crash a run
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -25,7 +26,7 @@ except Exception:
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0.03
 
-R_PETAL = 109  # (R_IN + R_OUT) / 2 in radial.py
+R_PETAL = (R_IN + R_OUT) / 2   # middle of the menu's segments
 LOG = None
 T0 = 0.0
 
@@ -268,7 +269,7 @@ def drag_open_menu(src, nudge=(620, 40), key="shift"):
     return menu_center(cur)
 
 
-def menu_center(cur, size=400):
+def menu_center(cur, size=MENU_SIZE):
     """The menu is kept fully on screen, so near an edge its centre isn't the cursor."""
     sw, sh = pyautogui.size()
     half = size // 2

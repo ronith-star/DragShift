@@ -31,16 +31,26 @@ IPC_NAME = ipc_name()
 
 GLYPHS = {"Compress": "⇲", "Metadata": "ⓘ", "Redact": "▮", "Crop": "⌗", "Edit": "☼",
           "Annotate": "✎", "Add BG": "▣", "Resize": "⤢", "Split": "✂", "Rotate": "⟳",
-          "Merge": "⧉", "Protect": "⚿", "Extract": "⧈"}
+          "Merge": "⧉", "Protect": "⚿", "Extract": "⧈", "Remove BG": "◐", "Copy Text": "¶"}
 SYMBOLS = {"Compress": "arrow.down.right.and.arrow.up.left", "Metadata": "tag",
            "Redact": "eye.slash", "Crop": "crop", "Edit": "slider.horizontal.3",
            "Annotate": "pencil.tip.crop.circle", "Add BG": "photo.on.rectangle.angled",
            "Resize": "arrow.up.left.and.arrow.down.right", "Split": "scissors",
            "Rotate": "rotate.right", "Merge": "doc.on.doc", "Protect": "lock",
-           "Extract": "photo.stack"}
+           "Extract": "photo.stack", "Remove BG": "person.and.background.dotted",
+           "Copy Text": "text.viewfinder"}
 
 IMAGE_TOOLS = ["Compress", "Resize", "Crop", "Edit", "Annotate", "Redact", "Add BG", "Metadata"]
 PDF_TOOLS = ["Compress", "Split", "Rotate", "Protect", "Extract", "Metadata"]
+
+
+def vision_tools(cat: str) -> list[str]:
+    """Actions powered by Apple's on-device Vision (macOS only)."""
+    if not IS_MAC:
+        return []
+    from . import platform_mac
+    names = ["Remove BG"] if cat == "image" and platform_mac.can_lift_subject() else []
+    return names + (["Copy Text"] if platform_mac.can_read_text() else [])
 
 
 # ---------------------------------------------------------------- background jobs
@@ -57,8 +67,10 @@ class Job(QRunnable):
 
     def run(self):
         try:
-            outs = self.fn() or []
-            self.sig.done.emit(report.summarize(self.action, self.srcs, outs, self.extra))
+            res = self.fn()
+            if not isinstance(res, report.Result):   # a list of files written
+                res = report.summarize(self.action, self.srcs, res or [], self.extra)
+            self.sig.done.emit(res)
         except UserError as e:
             self.sig.failed.emit(str(e))
         except Exception as e:  # noqa: BLE001
@@ -227,9 +239,10 @@ class DragShiftApp(QObject):
         same = [p for p in paths if category(p) == cat]
         rings: dict[str, list[Item]] = {"Convert": [Item(t, key=f"convert:{t}") for t in convert.targets_for(cat, ext)]}
         if cat == "image":
-            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", symbol=SYMBOLS[n]) for n in IMAGE_TOOLS]
+            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", symbol=SYMBOLS[n])
+                              for n in IMAGE_TOOLS + vision_tools(cat)]
         elif cat == "pdf":
-            names = PDF_TOOLS[:3] + (["Merge"] if len(same) > 1 else []) + PDF_TOOLS[3:]
+            names = PDF_TOOLS[:3] + (["Merge"] if len(same) > 1 else []) + PDF_TOOLS[3:] + vision_tools(cat)
             rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", symbol=SYMBOLS[n]) for n in names]
         return rings
 
@@ -246,6 +259,13 @@ class DragShiftApp(QObject):
                 verb = f"Converting to {name}…"
                 self.submit(f"convert:{name}", paths,
                             lambda: [o for p in paths for o in convert.convert(p, cat, name)], verb)
+            return
+        if name == "Remove BG":
+            self.submit("tool:Remove BG", paths, lambda: [imaging.remove_background(p) for p in paths],
+                        "Removing background…")
+            return
+        if name == "Copy Text":
+            self.submit("tool:Copy Text", paths, lambda: self.text_result(paths), "Reading text…")
             return
         if cat == "pdf":
             if name == "Merge":
@@ -277,6 +297,13 @@ class DragShiftApp(QObject):
             traceback.print_exc()
             self.toasts.error(f"Couldn't open {name}", friendly_error(e))
 
+    @staticmethod
+    def text_result(paths: list[str]) -> report.Result:
+        text = "\n\n".join(imaging.read_text(p) for p in paths)
+        words = len(text.split())
+        return report.Result("Text copied", "", [], [Path(p) for p in paths],
+                             good=f"{words} word{'s' if words != 1 else ''}", copy=text)
+
     def open_window(self, w: QWidget):
         if hasattr(w, "submit"):
             w.submit = self.submit
@@ -303,6 +330,8 @@ class DragShiftApp(QObject):
         def done(r):
             release(job)
             state["finished"] = True
+            if r.copy:
+                QGuiApplication.clipboard().setText(r.copy)
             card = state["card"] or self.toasts.new()
             card.done(r)
 

@@ -1,8 +1,11 @@
 """Watches for "left button held + mouse moved + Shift pressed" anywhere on screen, which
 is what a Shift+drag of a file looks like. Polling global input state is simple, needs no
-admin rights and can't stall the system the way a broken hook can.
+admin rights and can't stall the system the way a broken hook can. It polls quickly only while
+a button is down or the menu is open, and slowly otherwise, to spare the battery.
 Windows: GetAsyncKeyState. macOS: NSEvent.pressedMouseButtons / modifierFlags (no
-Accessibility or Input Monitoring permission required)."""
+Accessibility or Input Monitoring permission required), plus the drag pasteboard, so the menu
+only opens when it's a file being dragged (not a window move, text selection or a drawing
+app's Shift+drag)."""
 from __future__ import annotations
 
 import ctypes
@@ -14,6 +17,7 @@ from PySide6.QtGui import QCursor
 VK_LBUTTON, VK_SHIFT, VK_ESCAPE = 0x01, 0x10, 0x1B
 DRAG_THRESHOLD = 10   # px the mouse must travel with the button held
 NO_DRAG_TIMEOUT = 50  # ticks (≈ 0.75 s) to wait for a file drag to enter before hiding
+FAST, SLOW = 15, 50   # ms between polls: while a button is down or the menu is open / otherwise
 
 
 class DragShiftWatcher(QObject):
@@ -33,12 +37,13 @@ class DragShiftWatcher(QObject):
         self._fired = False
         self._idle_ticks = 0
         self._shown_at = QPoint()
+        self._pb_start = 0       # drag pasteboard change count just before the button went down
         self._user32 = ctypes.windll.user32 if sys.platform == "win32" else None
         self._mac = None
         if sys.platform == "darwin":
             from . import platform_mac
             self._mac = platform_mac if platform_mac.OK else None
-        self.timer = QTimer(self, interval=15, timeout=self._tick)
+        self.timer = QTimer(self, interval=SLOW, timeout=self._tick)
 
     def set_key(self, name: str):
         self.key_name = name
@@ -50,6 +55,13 @@ class DragShiftWatcher(QObject):
 
     def _down(self, vk: int) -> bool:
         return bool(self._user32.GetAsyncKeyState(vk) & 0x8000)
+
+    def _file_drag(self) -> bool:
+        """macOS: has a file drag started since the button went down? (Elsewhere: assume so.)"""
+        if self._mac is None:
+            return True
+        count, files = self._mac.drag_pasteboard()
+        return files and count != self._pb_start
 
     def _state(self) -> tuple[bool, bool, bool]:
         """(left button, trigger key, escape)"""
@@ -80,7 +92,7 @@ class DragShiftWatcher(QObject):
                     self._down_at = pos
                     self._fired = False
                 moved = (pos - self._down_at).manhattanLength() >= DRAG_THRESHOLD
-                if self.enabled and moved and shift and not self._fired:
+                if self.enabled and moved and shift and not self._fired and self._file_drag():
                     self._fired = True
                     self._idle_ticks = 0
                     self._shown_at = pos
@@ -88,4 +100,11 @@ class DragShiftWatcher(QObject):
             else:
                 self._down_at = None
                 self._fired = False
+                if self._mac is not None:
+                    # sampled while the button is up, so a drag that starts between two polls
+                    # still shows up as a change
+                    self._pb_start = self._mac.drag_pasteboard()[0]
         self._shift_was = shift
+        busy = lbtn or self.menu_visible()
+        if self.timer.interval() != (FAST if busy else SLOW):
+            self.timer.setInterval(FAST if busy else SLOW)

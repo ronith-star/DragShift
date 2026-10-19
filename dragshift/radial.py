@@ -133,6 +133,7 @@ class RadialMenu(QWidget):
         self._raw_backdrop = None                 # PIL image for the liquid renderer
         self.disc: QImage | None = None           # rendered glass disc
         self._segments: dict[int, list[QPainterPath]] = {}
+        self._px: dict = {}                       # label size per ring
         self._serial = 0
         self.got_drag = False
         self.hub_armed = False
@@ -437,6 +438,7 @@ class RadialMenu(QWidget):
         n = len(items) or 7
         paths = self._paths(n)
         rot = (1 - self._swap) * -22
+        px = self._label_px(items, n) if items else 10
         for i, path in enumerate(paths):
             h = self.spring[i] if i < len(self.spring) else 0.0
             a0, a1 = span(n, i)
@@ -455,26 +457,40 @@ class RadialMenu(QWidget):
                 lm = math.radians((a0 + a1) / 2 + rot)
                 rc = (R_IN + R_OUT) / 2 + 1
                 at = QPointF(c.x() + rc * math.cos(lm), c.y() - rc * math.sin(lm)) + push
-                self._label(p, at, items[i], h)
+                self._label(p, at, items[i], h, px)
         self._capsule(p, c)
 
-    def _label(self, p: QPainter, at: QPointF, it: Item, h: float):
+    def _label_px(self, items: list[Item], n: int) -> int:
+        """One label size per ring: the default, or smaller until every label fits its segment."""
+        key = (tuple(i.label for i in items), n)
+        if key not in self._px:
+            tool = any(i.symbol or i.glyph for i in items)
+            px, weight = (10, QFont.Medium) if tool else (12, QFont.DemiBold)
+            avail = 2 * ((R_IN + R_OUT) / 2) * math.sin(math.pi / max(n, 2)) - GAP - 10
+            while px > 9 and max(QFontMetricsF(glass.font(px, weight)).horizontalAdvance(i.label)
+                                 for i in items) > avail:
+                px -= 1
+            self._px[key] = px
+        return self._px[key]
+
+    def _label(self, p: QPainter, at: QPointF, it: Item, h: float, px: int):
         """The action's name, with its symbol above it for tools; the group is centred on `at`
         by its visible height (cap height for the text)."""
         p.save()
         p.setOpacity(p.opacity() * (0.25 + 0.75 * self._swap))
         col = QColor(255, 255, 255) if h > 0.5 else QColor(self.theme.label)
         if it.symbol or it.glyph:
-            f = glass.font(10, QFont.Medium)
+            f = glass.font(px, QFont.Medium)
             fm = QFontMetricsF(f)
-            pm = glass.symbol(it.symbol, 15, col, "medium") if it.symbol else None
+            sp = 15 if px >= 10 else 14
+            pm = glass.symbol(it.symbol, sp, col, "medium") if it.symbol else None
             sym_h = pm.height() / pm.devicePixelRatio() if pm is not None else 16
             gap = 5
             top = at.y() - (sym_h + gap + fm.capHeight()) / 2
-            glass.draw_symbol(p, it.symbol, QPointF(at.x(), top + sym_h / 2), 15, col, it.glyph, "medium")
+            glass.draw_symbol(p, it.symbol, QPointF(at.x(), top + sym_h / 2), sp, col, it.glyph, "medium")
             base = top + sym_h + gap + fm.capHeight()
         else:
-            f = glass.font(12, QFont.DemiBold)
+            f = glass.font(px, QFont.DemiBold)
             fm = QFontMetricsF(f)
             base = at.y() + fm.capHeight() / 2
         p.setFont(f)
@@ -492,10 +508,13 @@ class RadialMenu(QWidget):
             text = self.ring_names[self.ring_idx]
         else:
             text = "Drop here"
+        room = 2 * R_HUB - 22                      # widest text the capsule can hold
         f = glass.font(12, QFont.DemiBold)
+        if QFontMetricsF(f).horizontalAdvance(text) > room:
+            f = glass.font(11, QFont.DemiBold)
         fm = QFontMetricsF(f)
-        text = fm.elidedText(text, Qt.ElideRight, 2 * R_HUB - 30)
-        w = min(2 * R_HUB - 12, max(62.0, fm.horizontalAdvance(text) + 24))
+        text = fm.elidedText(text, Qt.ElideRight, room)
+        w = min(2 * R_HUB - 6, max(62.0, fm.horizontalAdvance(text) + 20))
         r = QRectF(c.x() - w / 2, c.y() - CAP_H / 2, w, CAP_H)
         p.setPen(QPen(QColor(255, 255, 255, 170), 1.0))
         p.setBrush(self.theme.segment)

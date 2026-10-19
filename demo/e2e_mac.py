@@ -22,6 +22,7 @@ from PIL import Image, ImageChops, ImageDraw
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import dragshift.convert  # noqa: E402,F401  (HEIC support for verifiers)
+from dragshift.radial import R_IN, R_OUT, SIZE as MENU_SIZE  # noqa: E402
 from e2e_windows import (make_files, img_ok, pdf_pages, v_format, v_pages_to_images,  # noqa: E402
                          v_combined, v_pdf_n, v_rotated, v_pdf_compress, v_merged)
 
@@ -31,7 +32,7 @@ DESK = Path.home() / "DragShiftTest"   # a Finder window on this folder
 LOGF = open(OUT / "log.txt", "w", encoding="utf-8")
 RESULTS: list[dict] = []
 T0 = time.time()
-R_PETAL = 109
+R_PETAL = (R_IN + R_OUT) / 2   # middle of the menu's segments
 SHIFT_KEY = 56
 
 
@@ -95,7 +96,7 @@ def screen_size():
     return int(b.size.width), int(b.size.height)
 
 
-def menu_center(cur, size=400):
+def menu_center(cur, size=MENU_SIZE):
     sw, shh = screen_size()
     half = size // 2
     return min(max(cur[0], half), sw - half), min(max(cur[1], half), shh - half)
@@ -136,8 +137,9 @@ def open_finder_window():
 
 def arrange(names: list[str]):
     """Place icons in the Finder window at known spots; convert to screen coordinates."""
-    for i, n in enumerate(names):
-        osa(f'tell application "Finder" to set position of item "{n}" of front window to {{80, {60 + i * 115}}}')
+    for i, n in enumerate(names):   # columns of five
+        x, y = 80 + (i // 5) * 130, 60 + (i % 5) * 115
+        osa(f'tell application "Finder" to set position of item "{n}" of front window to {{{x}, {y}}}')
     time.sleep(0.8)
     b = osa('tell application "Finder" to get bounds of front window')
     try:
@@ -231,10 +233,26 @@ def stash(before):
             pass
 
 
-def run(name, files, ring, label, verify, after_drop=None, multi=False):
+def clipboard() -> str:
+    return sh(["pbpaste"]).stdout
+
+
+def wait_clipboard(before: str, timeout=20) -> str:
+    end = time.time() + timeout
+    while time.time() < end:
+        now = clipboard()
+        if now.strip() and now != before:
+            return now
+        time.sleep(0.25)
+    return ""
+
+
+def run(name, files, ring, label, verify, after_drop=None, multi=False, to_clipboard=False):
+    """to_clipboard: the action copies text instead of writing a file; verify gets the text."""
     global POS
     srcs = [str(DESK / f) for f in files]
     before = snapshot()
+    clip0 = clipboard() if to_clipboard else ""
     t0 = time.time()
     status, msg = "PASS", ""
     try:
@@ -284,10 +302,16 @@ def run(name, files, ring, label, verify, after_drop=None, multi=False):
         post_key(SHIFT_KEY, False)
         if after_drop:
             after_drop()
-        outs = new_files(before)
-        if not outs:
-            raise AssertionError("no output file appeared")
-        msg = verify(outs, srcs) or ", ".join(o.name for o in outs[:3])
+        if to_clipboard:
+            text = wait_clipboard(clip0)
+            if not text:
+                raise AssertionError("nothing was copied")
+            msg = verify(text, srcs) or f"{len(text.split())} words copied"
+        else:
+            outs = new_files(before)
+            if not outs:
+                raise AssertionError("no output file appeared")
+            msg = verify(outs, srcs) or ", ".join(o.name for o in outs[:3])
     except Exception as e:
         status, msg = "FAIL", f"{type(e).__name__}: {e}"
         log(traceback.format_exc())
@@ -328,6 +352,40 @@ def v_smaller(outs, srcs):
     return f"{s0 // 1024} KB → {s1 // 1024} KB"
 
 
+def v_cutout(outs, srcs):
+    with Image.open(outs[0]) as im:
+        assert im.mode == "RGBA", f"{outs[0].name}: {im.mode}, not transparent"
+        a = im.getchannel("A")
+        w, h = im.size
+        assert a.getpixel((5, 5)) < 30, "background not removed"
+        assert a.getpixel((w // 2, h // 2 - 30)) > 220, "subject missing"
+    return f"{outs[0].name}: background transparent, subject kept"
+
+
+def v_text(*words):
+    def v(text, srcs):
+        missing = [w for w in words if w.lower() not in text.lower()]
+        assert not missing, f"copied text lacks {missing}: {text[:80]!r}"
+        return f"copied {len(text.split())} words incl. {', '.join(words)}"
+    return v
+
+
+def make_vision_samples():
+    """A picture with a clear subject and a 'scan' with text, for the Vision actions."""
+    from PIL import ImageFont
+    im = Image.new("RGB", (800, 600), (235, 235, 230))
+    d = ImageDraw.Draw(im)
+    d.ellipse((250, 120, 550, 420), fill=(200, 40, 50))
+    d.rectangle((380, 400, 420, 560), fill=(90, 60, 30))
+    im.save(DESK / "D-Subject.jpg", quality=92)
+    im = Image.new("RGB", (900, 300), "white")
+    d = ImageDraw.Draw(im)
+    f = ImageFont.truetype("/System/Library/Fonts/SFNS.ttf", 44)
+    d.text((40, 60), "Quarterly report 2026", fill="black", font=f)
+    d.text((40, 150), "Revenue grew 12% year over year.", fill="black", font=f)
+    im.save(DESK / "D-Scan.png")
+
+
 def v_no_meta(outs, srcs):
     from dragshift import imaging
     n, gps = imaging.count_metadata(outs[0])
@@ -335,7 +393,8 @@ def v_no_meta(outs, srcs):
     return "0 metadata fields left"
 
 
-SOURCES = ["D-Photo.jpg", "D-Report.pdf", "D-Appendix.pdf", "D-Letter.docx", "D-Graphic.png"]
+SOURCES = ["D-Photo.jpg", "D-Report.pdf", "D-Appendix.pdf", "D-Letter.docx", "D-Graphic.png",
+           "D-Subject.jpg", "D-Scan.png"]
 POS: dict = {}
 
 
@@ -348,6 +407,7 @@ def main():
     open_finder_window()
     empty = Image.open(shot("00_empty"))
     make_files(DESK, "D-")
+    make_vision_samples()
     for p in DESK.glob("D-*"):
         if p.name not in SOURCES:
             p.unlink()
@@ -404,6 +464,10 @@ def main():
         run("Add BG (window, Enter)", ["D-Graphic.png"], "Tools", "Add BG",
             v_dims(lambda a, b: b[0] > a[0] and b[1] > a[1]), enter_after(2.5))
         run("Metadata: remove all (Enter)", ["D-Photo.jpg"], "Tools", "Metadata", v_no_meta, enter_after())
+        run("Remove BG (Vision)", ["D-Subject.jpg"], "Tools", "Remove BG", v_cutout)
+        run("Copy Text from image (Vision)", ["D-Scan.png"], "Tools", "Copy Text",
+            v_text("Quarterly", "Revenue"), to_clipboard=True)
+        run("Copy Text from PDF", ["D-Report.pdf"], "Tools", "Copy Text", v_text(), to_clipboard=True)
     except Exception:
         log("ABORTED\n" + traceback.format_exc())
     finally:

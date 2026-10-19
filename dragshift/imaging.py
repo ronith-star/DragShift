@@ -389,6 +389,42 @@ def rotate_pdf(src: str | Path, degrees: int = 90) -> Path:
     return out
 
 
+# ---------------------------------------------------------------- Apple Vision (macOS)
+def remove_background(src: str | Path) -> Path:
+    """The picture's subject on a transparent background (PNG), cut out by Apple's on-device
+    Vision, as in Photos' "lift subject"."""
+    from . import platform_mac
+    from .util import UserError
+    im = open_image(src)
+    mask = platform_mac.subject_mask(im)
+    if mask is None:
+        raise UserError("No subject found in this picture.")
+    cut = im.convert("RGBA")
+    cut.putalpha(ImageChops.multiply(cut.getchannel("A"), mask))
+    return save_like(cut, src, "No Background", force_ext=".png")
+
+
+def read_text(src: str | Path) -> str:
+    """All the text in a picture or PDF: the PDF's own text when it has some, otherwise read
+    by Apple's on-device Vision (scans, screenshots, photos of documents)."""
+    from . import platform_mac
+    from .util import UserError, category
+    if category(src) == "pdf":
+        with open_pdf(src) as doc:
+            text = "\n".join(page.get_text() for page in doc).strip()
+            if not text:
+                pages = []
+                for page in doc:
+                    pix = page.get_pixmap(dpi=200)
+                    pages.append(Image.frombytes("RGB", (pix.width, pix.height), pix.samples))
+                text = "\n\n".join(platform_mac.recognize_text(pg) for pg in pages).strip()
+    else:
+        text = platform_mac.recognize_text(open_image(src)).strip()
+    if not text:
+        raise UserError("No text found.")
+    return text
+
+
 # ---------------------------------------------------------------- redact
 def redact(im: Image.Image, rects: list[tuple[int, int, int, int]], mode: str = "black") -> Image.Image:
     im = im.copy()

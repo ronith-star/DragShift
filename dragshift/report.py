@@ -15,6 +15,7 @@ class Result:
     outs: list[Path]
     srcs: list[Path] = field(default_factory=list)
     good: str = ""     # highlighted figure, e.g. "−75%"
+    copy: str = ""     # text to put on the clipboard (Copy Text)
 
     @property
     def thumb(self) -> Path | None:
@@ -137,6 +138,9 @@ def summarize(action: str, srcs: list, outs: list, extra: str = "") -> Result:
 
     if name == "Protect":
         return Result("Password protected", f"AES-256 · {o0.name}", outs, srcs, good="encrypted")
+
+    if name == "Remove BG":
+        return Result("Background removed", o0.name, outs, srcs)
 
     if name == "Extract":
         return Result(f"Extracted {len(outs)} image{'s' if len(outs) != 1 else ''}",
