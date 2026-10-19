@@ -42,16 +42,22 @@ def slider(lo: int, hi: int, val: int) -> QSlider:
 
 
 def toggle_row(labels: list[str], checked: int = 0) -> tuple[QHBoxLayout, QButtonGroup]:
+    """A segmented control: options in a pill-shaped track, the chosen one in the accent colour."""
     row = QHBoxLayout()
-    row.setSpacing(6)
-    grp = QButtonGroup(row)
+    track = QFrame()
+    track.setObjectName("segmented")
+    inner = QHBoxLayout(track)
+    inner.setContentsMargins(2, 2, 2, 2)
+    inner.setSpacing(2)
+    grp = QButtonGroup(track)
     grp.setExclusive(True)
     for i, t in enumerate(labels):
         b = QPushButton(t)
         b.setCheckable(True)
         b.setChecked(i == checked)
         grp.addButton(b, i)
-        row.addWidget(b)
+        inner.addWidget(b)
+    row.addWidget(track)
     row.addStretch(1)
     return row, grp
 
@@ -81,12 +87,7 @@ class ToolWindow(GlassWindow):
         self.path = self.paths[0]
         self.notify = notify
         self.submit = None   # set by the app: run work in the background with a spinner
-        if len(self.paths) == 1:
-            sub = f"{self.path.name}  ·  {human_size(file_size(self.path))}"
-        else:
-            total = sum(file_size(p) for p in self.paths)
-            sub = f"{len(self.paths)} files  ·  {human_size(total)}"
-        self.subtitle = QLabel(sub)
+        self.subtitle = QLabel(self.path.name if len(self.paths) == 1 else f"{len(self.paths)} files")
         self.subtitle.setObjectName("dim")
         self.body.addWidget(self.subtitle)
         QShortcut(QKeySequence(Qt.Key_Return), self, activated=self._enter)
@@ -111,9 +112,6 @@ class ToolWindow(GlassWindow):
         for b in extra_buttons:
             row.addWidget(b)
         row.addStretch(1)
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.close)
-        row.addWidget(cancel)
         ok = QPushButton(primary_text)
         ok.setObjectName("primary")
         ok.clicked.connect(on_primary)
@@ -243,33 +241,18 @@ class CropView(ImageView):
         shade.addRect(t)
         hole = QPainterPath()
         hole.addRect(r)
-        p.fillPath(shade.subtracted(hole), QColor(0, 0, 0, 140))
-        p.setPen(QPen(QColor(255, 255, 255, 230), 1.5))
+        p.fillPath(shade.subtracted(hole), QColor(60, 60, 64, 150))
+        acc = glass.accent()
+        p.setPen(QPen(acc, 1.5))
+        p.setBrush(Qt.NoBrush)
         p.drawRect(r)
-        p.setPen(QPen(QColor(255, 255, 255, 70), 1))
-        for i in (1, 2):  # rule of thirds
-            x = r.left() + r.width() * i / 3
-            y = r.top() + r.height() * i / 3
-            p.drawLine(QPointF(x, r.top()), QPointF(x, r.bottom()))
-            p.drawLine(QPointF(r.left(), y), QPointF(r.right(), y))
-        # corner handles: thick white brackets, like Photos
-        p.setPen(QPen(QColor(255, 255, 255), 3.5, Qt.SolidLine, Qt.SquareCap, Qt.MiterJoin))
-        k = min(18.0, r.width() / 3, r.height() / 3)
-        for c, dx, dy in ((r.topLeft(), 1, 1), (r.topRight(), -1, 1), (r.bottomLeft(), 1, -1),
-                          (r.bottomRight(), -1, -1)):
-            p.drawPolyline(QPolygonF([QPointF(c.x(), c.y() + dy * k), c, QPointF(c.x() + dx * k, c.y())]))
-        p.setPen(Qt.NoPen)
-        # live output size badge
-        txt = dims_text(round(self.sel.width() * self.k), round(self.sel.height() * self.k))
-        p.setFont(glass.font(12, QFont.DemiBold))
-        w = p.fontMetrics().horizontalAdvance(txt) + 18
-        badge = QRectF(r.center().x() - w / 2, r.bottom() - 30, w, 22)
-        if badge.top() < r.top() + 4:
-            badge.moveTop(r.bottom() + 6)
-        p.setBrush(QColor(0, 0, 0, 150))
-        p.drawRoundedRect(badge, 11, 11)
-        p.setPen(QColor(255, 255, 255))
-        p.drawText(badge, Qt.AlignCenter, txt)
+        # small square handles on the corners and edge midpoints
+        p.setPen(QPen(QColor(255, 255, 255, 220), 1))
+        p.setBrush(acc)
+        cx, cy = r.center().x(), r.center().y()
+        for x, y in ((r.left(), r.top()), (cx, r.top()), (r.right(), r.top()), (r.right(), cy),
+                     (r.right(), r.bottom()), (cx, r.bottom()), (r.left(), r.bottom()), (r.left(), cy)):
+            p.drawRoundedRect(QRectF(x - 4.5, y - 4.5, 9, 9), 2, 2)
 
 
 class CropWindow(ToolWindow):
@@ -316,9 +299,6 @@ class CropWindow(ToolWindow):
         dims.addWidget(self.h)
         dims.addWidget(QLabel("px"))
         dims.addStretch(1)
-        tip = QLabel("Double-click the image to reset")
-        tip.setObjectName("dim")
-        dims.addWidget(tip)
         self.body.addLayout(dims)
         self.w.editingFinished.connect(self._from_spin)
         self.h.editingFinished.connect(self._from_spin)
@@ -437,10 +417,6 @@ class AddBgWindow(ToolWindow):
         self.preview.setAlignment(Qt.AlignCenter)
         self.preview.setMinimumSize(360, 300)
         self.body.addWidget(self.preview, 1)
-        self.out_label = QLabel()
-        self.out_label.setObjectName("dim")
-        self.out_label.setAlignment(Qt.AlignCenter)
-        self.body.addWidget(self.out_label)
 
         self.body.addWidget(section("Background"))
         sw = QGridLayout()
@@ -477,7 +453,7 @@ class AddBgWindow(ToolWindow):
         slider_row(grid, 3, "Angle", self.ang, lambda v: f"{v}°")
         self.body.addLayout(grid)
 
-        self.body.addWidget(section("Size"))
+        self.body.addWidget(section("Ratio"))
         row, self.asp = toggle_row(self.ASPECTS)
         self.body.addLayout(row)
 
@@ -525,9 +501,6 @@ class AddBgWindow(ToolWindow):
         pm = QPixmap.fromImage(qimage_from_pil(out))
         self.preview.setPixmap(pm.scaled(self.preview.size() - QSize(10, 10), Qt.KeepAspectRatio,
                                          Qt.SmoothTransformation))
-        fw = round(out.width / k)
-        fh = round(out.height / k)
-        self.out_label.setText(f"Output  {dims_text(fw, fh)} px  ·  PNG")
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -661,7 +634,7 @@ class AnnotateView(ImageView):
         width = o.stroke.value() / self.scale()  # keep on-screen thickness consistent
         if o.tool == "Text":
             ed = QLineEdit(self)
-            ed.setPlaceholderText("Type, then Enter")
+            ed.setPlaceholderText("Text")
             ed.setProperty("pt", p)
             ed.setProperty("color", o.color)
             ed.setProperty("w", width)
@@ -828,9 +801,6 @@ class RedactWindow(ToolWindow):
         self.k = full[0] / self.base.width
         self.view = RedactView(qimage_from_pil(self.base), self)
         self.body.addWidget(self.view, 1)
-        self.hint = QLabel("Drag over anything you want hidden. It's burned into the pixels — it can't be undone in the copy.")
-        self.hint.setObjectName("dim")
-        self.body.addWidget(self.hint)
         row, self.mode = toggle_row(self.MODES)
         self.mode.idClicked.connect(lambda _: self.refresh())
         undo = QPushButton("Undo")
@@ -1053,7 +1023,7 @@ class MetadataWindow(ToolWindow):
                 cl.addWidget(mb, i, 2)
         self.body.addWidget(card)
         if self.has_gps:
-            warn = QLabel("⚠  This photo reveals where it was taken.")
+            warn = QLabel("Includes location")
             warn.setObjectName("warn")
             self.body.addWidget(warn)
 
@@ -1148,7 +1118,7 @@ class CompressWindow(ToolWindow):
         for name, _ in self.SIDES:
             self.side.addItem(name)
         g2.addWidget(self.side, 0, 1)
-        self.webp = QCheckBox("Convert to WebP (usually the smallest)")
+        self.webp = QCheckBox("Convert to WebP")
         g2.addWidget(self.webp, 1, 1)
         self.body.addLayout(g2)
 
@@ -1231,10 +1201,8 @@ class CompressWindow(ToolWindow):
         if self.mode.checkedId() == 1:
             limit = self.TARGETS[self.tgrp.checkedId()][1]
             q = self._quality_for(im, target, limit - self.meta_bytes, px_ratio)
-            note = f"quality ≈ {q}"
         else:
             q = self.q.value()
-            note = ""
         n = int(imaging.encode_size(im, target, q) * px_ratio) + self.meta_bytes
         buf = io.BytesIO()
         if target == "PNG":
@@ -1256,13 +1224,12 @@ class CompressWindow(ToolWindow):
             self.est.setText(f"{human_size(orig1)}  →  ≈ {human_size(n)}")
             n_cmp, o_cmp = n, orig1
         pct = (1 - n_cmp / max(1, o_cmp)) * 100
-        fmt = target if target != "JPG" else "JPG"
         if pct >= 1:
             self.saving.setObjectName("good")
-            self.saving.setText(f"≈ {pct:.0f}% smaller · {fmt}" + (f" · {note}" if note else ""))
+            self.saving.setText(f"{pct:.0f}% smaller")
         else:
             self.saving.setObjectName("warn")
-            self.saving.setText("Already well compressed — try a smaller size or WebP")
+            self.saving.setText("Already small")
         self.saving.style().unpolish(self.saving)
         self.saving.style().polish(self.saving)
 
@@ -1402,7 +1369,7 @@ class ProtectWindow(ToolWindow):
                                          for e in (self.pw, self.pw2)])
         g.addWidget(show, 0, 2)
         self.body.addLayout(g)
-        self.msg = QLabel("AES-256 encryption. Anyone opening the PDF will need this password.")
+        self.msg = QLabel("")
         self.msg.setObjectName("dim")
         self.msg.setWordWrap(True)
         self.body.addWidget(self.msg)
@@ -1418,14 +1385,13 @@ class ProtectWindow(ToolWindow):
         ok = len(a) >= 4 and a == b
         self.primary_btn.setEnabled(ok)
         if a and len(a) < 4:
-            self.msg.setText("Use at least 4 characters.")
+            self.msg.setText("Too short")
         elif b and a != b:
-            self.msg.setText("Passwords don't match yet.")
+            self.msg.setText("Doesn't match")
         elif ok:
-            strength = "strong" if len(a) >= 12 else "okay" if len(a) >= 8 else "weak"
-            self.msg.setText(f"Looks good · {strength} password")
+            self.msg.setText("Strong" if len(a) >= 12 else "Okay" if len(a) >= 8 else "Weak")
         else:
-            self.msg.setText("AES-256 encryption. Anyone opening the PDF will need this password.")
+            self.msg.setText("")
 
     def save(self):
         pw, path = self.pw.text(), self.path

@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import (QBrush, QColor, QFont, QGuiApplication, QIcon, QImage, QLinearGradient,
-                           QPainter, QPainterPath, QPen, QPixmap)
+from PySide6.QtGui import (QBrush, QColor, QFont, QIcon, QImage, QLinearGradient, QPainter,
+                           QPainterPath, QPen, QPixmap)
 
 IS_MAC = sys.platform == "darwin"
 FONT_FAMILY = ".AppleSystemUIFont" if IS_MAC else "Segoe UI Variable Text"
@@ -25,33 +25,28 @@ def font(px: float, weight: QFont.Weight = QFont.Normal) -> QFont:
     return f
 
 
-# ---------------------------------------------------------------- system colours
+# ---------------------------------------------------------------- colours
 @dataclass(frozen=True)
 class Theme:
-    dark: bool
+    """Light frosted glass with dark text; your system accent colour for anything selected
+    or primary."""
     label: QColor          # primary text
     label2: QColor         # secondary text
     label3: QColor         # tertiary text, disabled
-    fill: QColor           # control background on glass
-    fill2: QColor          # hovered control
+    fill: QColor           # secondary buttons, segmented-control track
+    fill2: QColor          # hovered secondary button
     separator: QColor
-    field: QColor          # text fields, popups' rows
+    field: QColor          # text fields
     card: QColor           # grouped-form card on a window
     popup: QColor          # menus, combo lists, tooltips
-    glass: QColor          # tint over refracted glass (menu, notifications)
+    glass: QColor          # tint over refracted glass (notifications, the menu's disc)
     panel: QColor          # tint over refracted glass for windows (denser, for reading)
     solid: QColor          # glass stand-in when there's no backdrop to refract
+    segment: QColor        # the menu's buttons and centre capsule
     accent: QColor
     green: QColor
     orange: QColor
     red: QColor
-
-
-def is_dark() -> bool:
-    try:
-        return QGuiApplication.styleHints().colorScheme() != Qt.ColorScheme.Light
-    except Exception:
-        return True
 
 
 def accent() -> QColor:
@@ -61,20 +56,15 @@ def accent() -> QColor:
         rgb = platform_mac.accent_rgb()
         if rgb:
             return QColor(*rgb)
-    return QColor(10, 132, 255) if is_dark() else QColor(0, 122, 255)
+    return QColor(0, 122, 255)
 
 
 def theme() -> Theme:
-    if is_dark():
-        return Theme(True, QColor(255, 255, 255), QColor(235, 235, 245, 158), QColor(235, 235, 245, 82),
-                     QColor(255, 255, 255, 30), QColor(255, 255, 255, 52), QColor(255, 255, 255, 34),
-                     QColor(255, 255, 255, 18), QColor(255, 255, 255, 16), QColor(44, 44, 46, 250),
-                     QColor(18, 18, 22, 70), QColor(26, 26, 30, 150), QColor(36, 36, 40, 242), accent(),
-                     QColor(48, 209, 88), QColor(255, 159, 10), QColor(255, 69, 58))
-    return Theme(False, QColor(0, 0, 0, 222), QColor(60, 60, 67, 160), QColor(60, 60, 67, 82),
-                 QColor(0, 0, 0, 15), QColor(0, 0, 0, 28), QColor(0, 0, 0, 30),
-                 QColor(255, 255, 255, 190), QColor(255, 255, 255, 150), QColor(246, 246, 248, 252),
-                 QColor(255, 255, 255, 90), QColor(246, 246, 248, 170), QColor(240, 240, 244, 245), accent(),
+    return Theme(QColor(29, 29, 31), QColor(60, 60, 67, 170), QColor(60, 60, 67, 95),
+                 QColor(255, 255, 255, 160), QColor(255, 255, 255, 220), QColor(0, 0, 0, 26),
+                 QColor(255, 255, 255, 225), QColor(255, 255, 255, 120), QColor(250, 250, 252, 252),
+                 QColor(255, 255, 255, 105), QColor(255, 255, 255, 150), QColor(246, 244, 242, 246),
+                 QColor(255, 255, 255, 170), accent(),
                  QColor(52, 199, 89), QColor(255, 149, 0), QColor(255, 59, 48))
 
 
@@ -208,36 +198,40 @@ QWidget#glassRoot {{ background: transparent; }}
 QLabel#title {{ font-size: 13px; font-weight: 600; }}
 QLabel#heading {{ font-size: 22px; font-weight: 700; }}
 QLabel#dim, QLabel.dim {{ color: {css(t.label2)}; font-size: 12px; }}
-QLabel#section {{ color: {css(t.label2)}; font-size: 11px; font-weight: 600; }}
+QLabel#section {{ color: {css(t.label2)}; font-size: 12px; font-weight: 500; }}
 QLabel#big {{ font-size: 26px; font-weight: 700; }}
 QLabel#good {{ color: {css(t.green)}; font-weight: 600; }}
 QLabel#warn {{ color: {css(t.orange)}; font-weight: 600; }}
 QPushButton {{
-  background: {css(t.fill)}; border: none; border-radius: 12px;
-  padding: 4px 14px; min-height: 16px; font-weight: 500;
+  background: {css(t.fill)}; border: 1px solid rgba(0,0,0,0.06); border-radius: 13px;
+  padding: 4px 16px; min-height: 16px; font-weight: 500;
 }}
 QPushButton:hover {{ background: {css(t.fill2)}; }}
-QPushButton:pressed {{ background: {css(t.separator)}; }}
-QPushButton:checked {{ background: {css(a)}; color: white; }}
+QPushButton:pressed {{ background: rgba(255,255,255,0.4); }}
+QPushButton:checked {{ background: {css(a)}; border-color: {css(a)}; color: white; }}
 QPushButton:disabled {{ color: {css(t.label3)}; }}
-QPushButton#primary {{ background: {css(a)}; color: white; font-weight: 600; padding: 4px 18px; }}
+QPushButton#primary {{ background: {css(a)}; border-color: {css(a)}; color: white; font-weight: 600; padding: 4px 18px; }}
 QPushButton#primary:hover {{ background: {css(hover)}; }}
 QPushButton#primary:pressed {{ background: {css(pressed)}; }}
 QPushButton#primary:disabled {{ background: {css(t.fill)}; color: {css(t.label3)}; }}
+QFrame#segmented {{ background: {css(t.fill)}; border: 1px solid rgba(0,0,0,0.06); border-radius: 14px; }}
+QFrame#segmented QPushButton {{ background: transparent; border: none; border-radius: 11px; padding: 3px 13px; }}
+QFrame#segmented QPushButton:hover {{ background: rgba(255,255,255,0.7); }}
+QFrame#segmented QPushButton:checked {{ background: {css(a)}; color: white; font-weight: 600; }}
 QPushButton#swatch {{
-  border-radius: 11px; padding: 0; min-width: 22px; max-width: 22px; min-height: 22px; max-height: 22px;
+  border-radius: 7px; padding: 0; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px;
   border: 1px solid {css(t.separator)};
 }}
 QPushButton#swatch:checked {{ border: 2px solid {css(a)}; }}
 QSlider {{ min-height: 22px; }}
-QSlider::groove:horizontal {{ height: 4px; background: {css(t.fill2)}; border-radius: 2px; }}
+QSlider::groove:horizontal {{ height: 4px; background: rgba(0,0,0,0.10); border-radius: 2px; }}
 QSlider::sub-page:horizontal {{ background: {css(a)}; border-radius: 2px; }}
 QSlider::handle:horizontal {{
-  background: #ffffff; width: 20px; height: 20px; margin: -8px 0; border-radius: 10px;
-  border: 1px solid rgba(0,0,0,0.16);
+  background: #ffffff; width: 18px; height: 18px; margin: -7px 0; border-radius: 9px;
+  border: 1px solid rgba(0,0,0,0.14);
 }}
 QSpinBox, QLineEdit, QComboBox {{
-  background: {css(t.field)}; border: 1px solid {css(t.separator)}; border-radius: 7px;
+  background: {css(t.field)}; border: 1px solid rgba(0,0,0,0.10); border-radius: 7px;
   padding: 3px 8px; min-height: 18px; selection-background-color: {css(a)}; selection-color: white;
 }}
 QLineEdit:focus, QSpinBox:focus {{ border: 1px solid {css(a)}; }}
@@ -427,7 +421,7 @@ class LiquidBacking(QObject):
         if pil is None:
             return
         self._serial += 1
-        job = _LiquidJob(self._serial, pil, rect.width(), rect.height(), self.radius, self.style, is_dark())
+        job = _LiquidJob(self._serial, pil, rect.width(), rect.height(), self.radius, self.style, False)
         from .util import keep, release
         job.sig.done.connect(lambda *a, j=job: (release(j), self._done(*a)))
         QThreadPool.globalInstance().start(keep(job))

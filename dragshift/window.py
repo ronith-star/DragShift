@@ -66,7 +66,7 @@ class Switch(QAbstractButton):
         t = glass.theme()
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        track = QColor(t.fill2)
+        track = QColor(0, 0, 0, 34)
         on = QColor(t.accent)
         mix = lambda a, b, k: QColor(int(a.red() + (b.red() - a.red()) * k), int(a.green() + (b.green() - a.green()) * k),
                                      int(a.blue() + (b.blue() - a.blue()) * k), int(a.alpha() + (b.alpha() - a.alpha()) * k))

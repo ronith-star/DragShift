@@ -20,7 +20,7 @@ from .radial import Item, RadialMenu
 from .settings import Settings, SettingsWindow, WelcomeWindow, TRIGGERS
 from .toasts import ToastStack
 from .trigger import DragShiftWatcher
-from .util import UserError, category, file_size, human_size, keep, release
+from .util import UserError, category, keep, release
 
 APP_NAME = "DragShift"
 VERSION = __version__
@@ -32,24 +32,12 @@ IPC_NAME = ipc_name()
 GLYPHS = {"Compress": "⇲", "Metadata": "ⓘ", "Redact": "▮", "Crop": "⌗", "Edit": "☼",
           "Annotate": "✎", "Add BG": "▣", "Resize": "⤢", "Split": "✂", "Rotate": "⟳",
           "Merge": "⧉", "Protect": "⚿", "Extract": "⧈"}
-SYMBOLS = {"Compress": "arrow.down.right.and.arrow.up.left", "Metadata": "info.circle",
+SYMBOLS = {"Compress": "arrow.down.right.and.arrow.up.left", "Metadata": "tag",
            "Redact": "eye.slash", "Crop": "crop", "Edit": "slider.horizontal.3",
            "Annotate": "pencil.tip.crop.circle", "Add BG": "photo.on.rectangle.angled",
            "Resize": "arrow.up.left.and.arrow.down.right", "Split": "scissors",
            "Rotate": "rotate.right", "Merge": "doc.on.doc", "Protect": "lock",
            "Extract": "photo.stack"}
-
-HINTS = {
-    "Compress": "Shrink file size", "Metadata": "View · remove GPS", "Redact": "Hide private info",
-    "Crop": "Trim to a ratio", "Edit": "Light · colour · rotate", "Annotate": "Arrows · text · steps",
-    "Add BG": "Gradient backdrop", "Resize": "Change dimensions", "Split": "One PDF per page",
-    "Rotate": "Turn pages 90°", "Merge": "Join into one PDF", "Protect": "Add a password",
-    "Extract": "Save embedded images",
-}
-FORMAT_HINTS = {"JPG": "Small, universal", "PNG": "Lossless · transparency", "WEBP": "Smallest for web",
-                "HEIC": "iPhone format", "TIFF": "Print · archival", "AVIF": "Next-gen, tiny",
-                "BMP": "Uncompressed", "PDF": "Document", "ICO": "Windows icon", "GIF": "Legacy web",
-                "DOCX": "Editable Word", "TXT": "Plain text"}
 
 IMAGE_TOOLS = ["Compress", "Resize", "Crop", "Edit", "Annotate", "Redact", "Add BG", "Metadata"]
 PDF_TOOLS = ["Compress", "Split", "Rotate", "Protect", "Extract", "Metadata"]
@@ -141,7 +129,7 @@ class DragShiftApp(QObject):
         self.pool = QThreadPool.globalInstance()
         self.windows: list[QWidget] = []
         self.toasts = ToastStack()
-        self.menu = RadialMenu(self.build_rings, self.describe)
+        self.menu = RadialMenu(self.build_rings)
         self.menu.activated.connect(self.run_item)
 
         # the watcher only manages menus it opened (drag mode); click-mode menus (tray, right-click,
@@ -208,8 +196,7 @@ class DragShiftApp(QObject):
             if files:
                 self.queue_files(files)
             elif data.get("show"):
-                self.toasts.info("DragShift is already running",
-                                 f"Drag any file and press {self.trigger_label()}. It lives in the tray.")
+                self.toasts.info("DragShift is running", "")
             sock.disconnectFromServer()
             sock.deleteLater()
 
@@ -232,31 +219,18 @@ class DragShiftApp(QObject):
             self.show_click_menu(files)
 
     # ------------------------------------------------------------ menu contents
-    def describe(self, paths: list[str]) -> str:
-        if len(paths) > 1:
-            return f"{len(paths)} files"
-        return human_size(file_size(paths[0]))
-
     def build_rings(self, paths: list[str]) -> dict[str, list[Item]]:
         cat = category(paths[0])
         if cat is None:
             return {"Unsupported": []}
         ext = Path(paths[0]).suffix
         same = [p for p in paths if category(p) == cat]
-        convert_items = []
-        for t in convert.targets_for(cat, ext):
-            hint = FORMAT_HINTS.get(t, "")
-            if cat == "image" and t == "PDF" and len(same) > 1:
-                hint = f"{len(same)} images → 1 PDF"
-            convert_items.append(Item(t, key=f"convert:{t}", hint=hint))
-        rings: dict[str, list[Item]] = {"Convert": convert_items}
+        rings: dict[str, list[Item]] = {"Convert": [Item(t, key=f"convert:{t}") for t in convert.targets_for(cat, ext)]}
         if cat == "image":
-            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", hint=HINTS[n], symbol=SYMBOLS[n])
-                              for n in IMAGE_TOOLS]
+            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", symbol=SYMBOLS[n]) for n in IMAGE_TOOLS]
         elif cat == "pdf":
             names = PDF_TOOLS[:3] + (["Merge"] if len(same) > 1 else []) + PDF_TOOLS[3:]
-            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", hint=HINTS[n], symbol=SYMBOLS[n])
-                              for n in names]
+            rings["Tools"] = [Item(n, GLYPHS[n], key=f"tool:{n}", symbol=SYMBOLS[n]) for n in names]
         return rings
 
     # ------------------------------------------------------------ actions
@@ -478,8 +452,7 @@ def main(argv: list[str] | None = None) -> int:
     elif not app.settings.get("welcomed"):
         QTimer.singleShot(300, app.show_welcome)
     elif "--quiet" not in argv:
-        QTimer.singleShot(400, lambda: app.toasts.info(
-            "DragShift is running", f"Drag any file, then press {app.trigger_label()}."))
+        QTimer.singleShot(400, lambda: app.toasts.info("DragShift is running", ""))
     return qapp.exec()
 
 
@@ -504,7 +477,7 @@ def selftest() -> int:
             imaging.protect_pdf(pdf, "pw")
             from . import liquid
             liquid.render(Image.new("RGB", (80, 80)), liquid.sdf_circle(80, 80, 40, 40, 30))
-            menu = RadialMenu(lambda p: {"Convert": [Item("PNG")]}, lambda p: "1 KB")
+            menu = RadialMenu(lambda p: {"Convert": [Item("PNG")]})
             menu._load([str(src)])
             n = lambda *a, **k: None
             for w in (tools.CropWindow(str(src), n), tools.AddBgWindow(str(src), n), tools.EditWindow(str(src), n),

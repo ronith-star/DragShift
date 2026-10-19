@@ -21,7 +21,8 @@ from PySide6.QtWidgets import QWidget
 from . import glass
 from .report import Result
 
-W, H = 360, 100
+W = 360
+H_SHORT, H_TALL = 64, 98   # without / with action buttons
 GAP = 8
 MARGIN = 12
 RADIUS = 22
@@ -79,7 +80,8 @@ class ToastCard(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
-        self.resize(W, H)
+        self.h = H_SHORT
+        self.resize(W, self.h)
         self.state = "working"     # working | done | error | info
         self.title = ""
         self.detail = ""
@@ -102,34 +104,46 @@ class ToastCard(QWidget):
         self.life = QTimer(self, singleShot=True, timeout=self.dismiss)
 
     # ------------------------------------------------------------ state
+    def _fit(self):
+        """Tall with action buttons, short otherwise; the stack re-flows when this changes."""
+        tall = (self.state == "done" and self.result and self.result.outs) or (self.state == "error" and self.detail)
+        h = H_TALL if tall else H_SHORT
+        if h != self.h:
+            self.h = h
+            if self.isVisible():
+                self.stack.reflow()
+        self.update()
+
     def working(self, title: str, detail: str = ""):
         self.state, self.title, self.detail = "working", title, detail
         self.spinner.start()
-        self.update()
+        self._fit()
 
     def done(self, r: Result):
         self.spinner.stop()
         self.state, self.result = "done", r
-        self.title, self.detail, self.good = r.title, r.detail, r.good
+        outs = r.outs or []
+        self.title, self.good = r.title, r.good
+        self.detail = Path(outs[0]).name if len(outs) == 1 else f"{len(outs)} files" if outs else ""
         self.thumb = None
         if r.thumb is not None:
             pm = QPixmap(str(r.thumb))
             if not pm.isNull():
                 self.thumb = pm.scaled(2 * LEAD, 2 * LEAD, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
         self.life.start(6500)
-        self.update()
+        self._fit()
 
     def error(self, title: str, detail: str):
         self.spinner.stop()
         self.state, self.title, self.detail = "error", title, detail
         self.life.start(9000)
-        self.update()
+        self._fit()
 
     def info(self, title: str, detail: str, ms: int = 4500):
         self.spinner.stop()
         self.state, self.title, self.detail = "info", title, detail
         self.life.start(ms)
-        self.update()
+        self._fit()
 
     def _spin(self):
         self.spin = (self.spin + 6) % 360
@@ -213,12 +227,12 @@ class ToastCard(QWidget):
             reveal(r.outs[0])
             self.dismiss()
         elif name == "Undo":
-            n = trash(r.outs)
+            trash(r.outs)
             self.result = None
             self.thumb = None
             self.good = ""
             bin_name = "Trash" if sys.platform == "darwin" else "Recycle Bin"
-            self.info("Undone", f"Moved {n} file{'s' if n != 1 else ''} to the {bin_name}", 2500)
+            self.info(f"Moved to {bin_name}", "", 2500)
 
     # ------------------------------------------------------------ paint
     def _close_rect(self) -> QRectF:
@@ -254,7 +268,8 @@ class ToastCard(QWidget):
             glass.paint_glass(p, path, t.solid)
 
         has_buttons = self.state == "done" and bool(self.result and self.result.outs)
-        top = PAD if has_buttons else (H - LEAD) / 2
+        wrap = self.state == "error"      # errors may need two lines to say what went wrong
+        top = PAD if self.h == H_TALL else (self.h - LEAD) / 2
         lead = QRectF(PAD, top, LEAD, LEAD)
 
         # leading visual: spinner / thumbnail / symbol
@@ -277,7 +292,7 @@ class ToastCard(QWidget):
                 "done": ("checkmark.circle.fill", t.green, "✓"),
                 "error": ("exclamationmark.triangle.fill", t.orange, "!"),
             }.get(self.state, ("info.circle.fill", t.accent, "i"))
-            if self.title == "Undone":
+            if self.title.startswith("Moved to"):
                 name, glyph = "arrow.uturn.backward.circle.fill", "↺"
             glass.draw_symbol(p, name, lead.center(), 30, col, glyph)
 
@@ -286,7 +301,8 @@ class ToastCard(QWidget):
         fm = QFontMetrics(tf)
         p.setFont(tf)
         title = fm.elidedText(self.title, Qt.ElideRight, int(tw))
-        ty = top - 1 if has_buttons else top + 1
+        block = 18 + (19 if self.detail else 0)
+        ty = top + (LEAD - block) / 2 if not wrap else top + 1
         p.setPen(t.label)
         p.drawText(QRectF(TX, ty, tw, 18), Qt.AlignLeft | Qt.AlignVCenter, title)
         # highlighted figure (e.g. "75% smaller")
@@ -304,11 +320,16 @@ class ToastCard(QWidget):
                 p.setFont(gf)
                 p.setPen(t.green)
                 p.drawText(chip, Qt.AlignCenter, self.good)
-        df = glass.font(12)
-        p.setFont(df)
-        p.setPen(t.label2)
-        p.drawText(QRectF(TX, ty + 19, tw + 18, 34), Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap,
-                   QFontMetrics(df).elidedText(self.detail, Qt.ElideMiddle, int(tw * 1.9)))
+        if self.detail:
+            df = glass.font(12)
+            p.setFont(df)
+            p.setPen(t.label2)
+            if wrap:
+                p.drawText(QRectF(TX, ty + 19, tw + 18, self.h - ty - 19 - PAD),
+                           Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, self.detail)
+            else:
+                p.drawText(QRectF(TX, ty + 19, tw + 18, 17), Qt.AlignLeft | Qt.AlignVCenter,
+                           QFontMetrics(df).elidedText(self.detail, Qt.ElideMiddle, int(tw + 18)))
 
         # close button, shown while the pointer is over the card
         if self.hovered:
@@ -329,7 +350,7 @@ class ToastCard(QWidget):
             bx = TX
             for i, nme in enumerate(("Open", "Show", "Undo")):
                 bw = bfm.horizontalAdvance(labels[nme]) + 22
-                br = QRectF(bx, H - PAD - 24, bw, 24)
+                br = QRectF(bx, self.h - PAD - 24, bw, 24)
                 self.buttons.append((nme, br))
                 p.setPen(Qt.NoPen)
                 p.setBrush(t.fill2 if self.hover_btn == i else t.fill)
@@ -349,14 +370,20 @@ class ToastStack:
         scr = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         return scr.availableGeometry()
 
-    def _slot(self, i: int) -> QRect:
+    def _rects(self) -> list[QRect]:
+        """Each card's place, newest last, stacked away from the corner by their heights."""
         g = self._screen_rect()
         x = g.right() - W - MARGIN
-        if TOP_RIGHT:
-            y = g.top() + MARGIN + i * (H + GAP)
-        else:
-            y = g.bottom() - MARGIN - H - i * (H + GAP)
-        return QRect(x, y, W, H)
+        rects, off = [], MARGIN
+        for c in self.cards:
+            y = g.top() + off if TOP_RIGHT else g.bottom() - off - c.h
+            rects.append(QRect(x, y, W, c.h))
+            off += c.h + GAP
+        return rects
+
+    def reflow(self):
+        for c, r in zip(self.cards, self._rects()):
+            c.relocate(r)
 
     def new(self) -> ToastCard:
         c = ToastCard(self)
@@ -364,14 +391,13 @@ class ToastStack:
         while len(self.cards) >= 4:
             self.cards[0].dismiss()
         self.cards.append(c)
-        c.appear(self._slot(len(self.cards) - 1))
+        c.appear(self._rects()[-1])
         return c
 
     def _closed(self, card):
         if card in self.cards:
             self.cards.remove(card)
-        for i, c in enumerate(self.cards):
-            c.relocate(self._slot(i))
+        self.reflow()
 
     # conveniences
     def info(self, title: str, detail: str, ms: int = 4500) -> ToastCard:
