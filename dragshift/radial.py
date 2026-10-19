@@ -29,15 +29,16 @@ class Item:
     symbol: str = ""         # SF Symbol name; formats have none, tools do
 
 
-SIZE = 360          # window size (room for the shadow)
-R_DISC = 140        # the glass disc
-R_OUT = 129         # segments' outer edge
-R_IN = 54           # segments' inner edge
-R_HUB = 44          # hub ring
-GAP = 6             # even gap between segments, px
-CORNER = 10         # segment corner radius
-CAP_H = 28          # centre capsule height
-PAD = 4             # breathing room between a label and its segment's edge
+SIZE = 340          # window size (room for the shadow)
+R_DISC = 128        # the glass disc
+R_OUT = 117         # segments' outer edge
+R_IN = 56           # segments' inner edge
+R_HUB = 46          # hub ring
+GAP = 7             # even gap between segments, px
+CORNER = 11         # segment corner radius
+CAP_H = 30          # centre capsule height
+ICON = 20           # a tool's symbol, the same on every ring
+NAME_PX = 12        # a format's name, the same on every ring
 WELL = QColor(224, 221, 218, 246)   # the disc when there's no backdrop: a tone darker than the segments
 
 
@@ -135,7 +136,6 @@ class RadialMenu(QWidget):
         self._raw_backdrop = None                 # PIL image for the liquid renderer
         self.disc: QImage | None = None           # rendered glass disc
         self._segments: dict[int, list[QPainterPath]] = {}
-        self._fits: dict = {}                     # label layout per ring
         self._serial = 0
         self.got_drag = False
         self.hub_armed = False
@@ -444,7 +444,6 @@ class RadialMenu(QWidget):
         n = len(items) or 7
         paths = self._paths(n)
         rot = (1 - self._swap) * -22
-        fit = self._fit(items, n) if items else None
         for i, path in enumerate(paths):
             h = self.spring[i] if i < len(self.spring) else 0.0
             a0, a1 = span(n, i)
@@ -460,10 +459,10 @@ class RadialMenu(QWidget):
             p.setBrush(Qt.NoBrush)
             p.drawPath(seg)
             if i < len(items):
-                px, sp, radii, named = fit
                 lm = math.radians((a0 + a1) / 2 + rot)
-                at = QPointF(c.x() + radii[i] * math.cos(lm), c.y() - radii[i] * math.sin(lm)) + push
-                self._label(p, at, items[i], h, px, sp, named)
+                r = (R_IN + R_OUT) / 2
+                at = QPointF(c.x() + r * math.cos(lm), c.y() - r * math.sin(lm)) + push
+                self._label(p, at, items[i], h)
         self._capsule(p, c)
 
     @staticmethod
@@ -477,77 +476,26 @@ class RadialMenu(QWidget):
         k = min(1.0, sp * 1.35 / w, sp * 1.1 / h)
         return pm, QSizeF(w * k, h * k)
 
-    def _group(self, it: Item, px: int, sp: int, named: bool = True) -> tuple[float, float]:
-        """Width and visible height of an item's label: symbol over the name, the symbol
-        alone, or the name alone."""
-        tool = bool(it.symbol or it.glyph)
-        fm = QFontMetricsF(glass.font(px, QFont.Medium if tool else QFont.DemiBold))
-        tw = fm.horizontalAdvance(it.label)
-        if not tool:
-            return tw, fm.capHeight()
-        _, ss = self._symbol(it, sp, QColor(0, 0, 0))
-        if not named:
-            return ss.width(), ss.height()
-        return max(tw, ss.width()), ss.height() + 4 + fm.capHeight()
-
-    def _fit(self, items: list[Item], n: int):
-        """(text px, symbol px, radius per item, names shown) for a ring: the largest sizes at
-        which every label fits inside its segment with PAD to spare, each placed as near the
-        middle of its segment as it fits. Text never drops below 10 px: a ring too crowded for
-        symbol and name shows larger symbols alone, and the hub's capsule names the action."""
-        key = (tuple(i.label for i in items), n)
-        if key in self._fits:
-            return self._fits[key]
-        c = QPointF(SIZE / 2, SIZE / 2)
-        paths = self._paths(n)
-        mid_r = (R_IN + R_OUT) / 2
-        tool = any(i.symbol or i.glyph for i in items)
-        sizes = ([(11, 17, True), (10, 16, True), (10, 15, True)] +
-                 [(10, sp, False) for sp in (20, 19, 18, 17, 16, 15, 14)]) if tool else \
-                [(13, 0, True), (12, 0, True), (11, 0, True), (10, 0, True)]
-        for px, sp, named in sizes:
-            radii = []
-            for i, it in enumerate(items):
-                w, h = self._group(it, px, sp, named)
-                a = math.radians(sum(span(n, i)) / 2)
-                found = None
-                for r in sorted(range(int(R_IN), int(R_OUT) + 1), key=lambda r: abs(r - mid_r)):
-                    at = QPointF(c.x() + r * math.cos(a), c.y() - r * math.sin(a))
-                    if paths[i].contains(QRectF(at.x() - w / 2 - PAD, at.y() - h / 2 - PAD, w + 2 * PAD, h + 2 * PAD)):
-                        found = r
-                        break
-                if found is None:
-                    break
-                radii.append(found)
-            if len(radii) == len(items):
-                self._fits[key] = (px, sp, radii, named)
-                return self._fits[key]
-        self._fits[key] = (*sizes[-1][:2], [mid_r] * len(items), sizes[-1][2])
-        return self._fits[key]
-
-    def _label(self, p: QPainter, at: QPointF, it: Item, h: float, px: int, sp: int, named: bool):
-        """The action's name, with its symbol above it for tools (or the symbol alone when the
-        ring is crowded); the group is centred on `at` by its visible height."""
+    def _label(self, p: QPainter, at: QPointF, it: Item, h: float):
+        """One rule on every ring: a tool shows its symbol, a format shows its name, each at one
+        size everywhere, centred in its segment; the hub's capsule names the one under the
+        pointer."""
         p.save()
         p.setOpacity(p.opacity() * (0.25 + 0.75 * self._swap))
         col = QColor(255, 255, 255) if h > 0.5 else QColor(self.theme.label)
-        tool = bool(it.symbol or it.glyph)
-        f = glass.font(px, QFont.Medium if tool else QFont.DemiBold)
-        fm = QFontMetricsF(f)
-        if tool:
-            pm, ss = self._symbol(it, sp, col)
-            top = at.y() - (ss.height() + (4 + fm.capHeight() if named else 0)) / 2
+        if it.symbol or it.glyph:
+            pm, ss = self._symbol(it, ICON, col)
             if pm is not None:
-                p.drawPixmap(QRectF(at.x() - ss.width() / 2, top, ss.width(), ss.height()), pm, QRectF(pm.rect()))
+                p.drawPixmap(QRectF(at.x() - ss.width() / 2, at.y() - ss.height() / 2, ss.width(), ss.height()),
+                             pm, QRectF(pm.rect()))
             else:
-                glass.draw_symbol(p, "", QPointF(at.x(), top + ss.height() / 2), sp, col, it.glyph)
-            base = top + ss.height() + 4 + fm.capHeight()
+                glass.draw_symbol(p, "", at, ICON, col, it.glyph)
         else:
-            base = at.y() + fm.capHeight() / 2
-        if named or not tool:
+            f = glass.font(NAME_PX, QFont.DemiBold)
+            fm = QFontMetricsF(f)
             p.setFont(f)
             p.setPen(col)
-            p.drawText(QPointF(at.x() - fm.horizontalAdvance(it.label) / 2, base), it.label)
+            p.drawText(QPointF(at.x() - fm.horizontalAdvance(it.label) / 2, at.y() + fm.capHeight() / 2), it.label)
         p.restore()
 
     def _capsule(self, p: QPainter, c: QPointF):
