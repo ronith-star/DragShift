@@ -139,6 +139,7 @@ class RadialMenu(QWidget):
         self._serial = 0
         self.got_drag = False
         self.hub_armed = False
+        self._hub_anchor = QPointF()             # where the pointer was when the hub timer (re)started
         self.click_mode = False  # opened from tray/menu instead of a drag
         self._t = 1.0            # pop-in animation 0..1
         self._swap = 1.0         # ring-swap animation 0..1
@@ -314,20 +315,22 @@ class RadialMenu(QWidget):
         return int(rel // (360.0 / n)) % n
 
     def _set_hover(self, h: int, pos: QPointF | None = None):
-        moved = False
         if pos is not None:
-            moved = (QPointF(pos) - self.cursor_pos).manhattanLength() > 3
             self.cursor_pos = QPointF(pos)
         if h != self.hover:
             self.hover = h
             if h >= 0:
                 self.hub_armed = True  # visited a segment: resting on the hub may now flip rings
             if h == -2 and self.hub_armed and len(self.ring_names) > 1:
+                self._hub_anchor = QPointF(self.cursor_pos)
                 self.hub_timer.start()
             else:
                 self.hub_timer.stop()
-        elif h == -2 and moved and self.hub_timer.isActive():
-            self.hub_timer.start()     # still crossing the hub: only a pause on it flips the ring
+        elif h == -2 and self.hub_timer.isActive() and \
+                (self.cursor_pos - self._hub_anchor).manhattanLength() > 4:
+            # still crossing the hub: only a pause on it (within 4 px) flips the ring
+            self._hub_anchor = QPointF(self.cursor_pos)
+            self.hub_timer.start()
         self.update()
 
     # ------------------------------------------------------------ drag & drop
