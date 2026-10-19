@@ -1,0 +1,354 @@
+[
+ {
+  "name": "JPG \u2192 PNG",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo.png \u00b7 2400\u00d71600",
+  "seconds": 6.1,
+  "t": 6.1
+ },
+ {
+  "name": "JPG \u2192 WEBP",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo.webp \u00b7 2400\u00d71600",
+  "seconds": 6.2,
+  "t": 12.9
+ },
+ {
+  "name": "JPG \u2192 HEIC",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo.heic \u00b7 2400\u00d71600",
+  "seconds": 7.3,
+  "t": 20.7
+ },
+ {
+  "name": "JPG \u2192 TIFF",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo.tiff \u00b7 2400\u00d71600",
+  "seconds": 5.4,
+  "t": 26.7
+ },
+ {
+  "name": "JPG \u2192 AVIF",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo.avif \u00b7 2400\u00d71600",
+  "seconds": 6.5,
+  "t": 33.8
+ },
+ {
+  "name": "JPG \u2192 BMP",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo.bmp \u00b7 2400\u00d71600",
+  "seconds": 5.4,
+  "t": 39.8
+ },
+ {
+  "name": "JPG \u2192 PDF",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo.pdf \u00b7 1 page(s)",
+  "seconds": 5.3,
+  "t": 45.7
+ },
+ {
+  "name": "JPG \u2192 ICO",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo.ico \u00b7 128\u00d786",
+  "seconds": 5.6,
+  "t": 51.9
+ },
+ {
+  "name": "JPG \u2192 GIF",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo.gif \u00b7 2400\u00d71600",
+  "seconds": 5.6,
+  "t": 58.1
+ },
+ {
+  "name": "PNG \u2192 JPG",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Graphic.jpg \u00b7 800\u00d7533",
+  "seconds": 5.4,
+  "t": 64.1
+ },
+ {
+  "name": "PDF \u2192 JPG (3 pages)",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "3 \u00d7 .jpg",
+  "seconds": 6.5,
+  "t": 71.2
+ },
+ {
+  "name": "PDF \u2192 PNG (3 pages)",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "3 \u00d7 .png",
+  "seconds": 6.7,
+  "t": 78.6
+ },
+ {
+  "name": "PDF \u2192 DOCX",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Report.docx",
+  "seconds": 5.6,
+  "t": 84.8
+ },
+ {
+  "name": "PDF \u2192 TXT",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Report.txt",
+  "seconds": 5.3,
+  "t": 90.7
+ },
+ {
+  "name": "DOCX \u2192 PDF",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Letter.pdf \u00b7 1 page(s)",
+  "seconds": 5.4,
+  "t": 96.7
+ },
+ {
+  "name": "DOCX \u2192 TXT",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Letter.txt",
+  "seconds": 5.4,
+  "t": 102.6
+ },
+ {
+  "name": "TXT \u2192 PDF",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Notes.pdf \u00b7 1 page(s)",
+  "seconds": 5.3,
+  "t": 108.6
+ },
+ {
+  "name": "TXT \u2192 DOCX",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Notes.docx",
+  "seconds": 5.4,
+  "t": 114.5
+ },
+ {
+  "name": "2 images \u2192 1 PDF",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "2 images \u2192 2-page PDF",
+  "seconds": 7.3,
+  "t": 122.5
+ },
+ {
+  "name": "Compress to 200 KB",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "354 KB \u2192 185 KB (48% smaller)",
+  "seconds": 12.4,
+  "t": 135.5
+ },
+ {
+  "name": "Resize 50%",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "2400\u00d71600 \u2192 1200\u00d7800",
+  "seconds": 8.4,
+  "t": 144.5
+ },
+ {
+  "name": "Crop 1:1",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "2400\u00d71600 \u2192 1600\u00d71600",
+  "seconds": 9.1,
+  "t": 154.2
+ },
+ {
+  "name": "Edit: auto + rotate",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "2400\u00d71600 \u2192 1600\u00d72400",
+  "seconds": 10.2,
+  "t": 165.1
+ },
+ {
+  "name": "Annotate",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo Annotated.jpg",
+  "seconds": 11.6,
+  "t": 177.3
+ },
+ {
+  "name": "Redact",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "Photo Redacted.jpg \u00b7 centre blacked out",
+  "seconds": 9.7,
+  "t": 187.6
+ },
+ {
+  "name": "Add BG 1:1",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "2400\u00d71600 \u2192 2976\u00d72976",
+  "seconds": 13.3,
+  "t": 201.5
+ },
+ {
+  "name": "Metadata: remove location",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "GPS removed, kept Apple iPhone 15 Pro",
+  "seconds": 7.9,
+  "t": 210.0
+ },
+ {
+  "name": "Metadata: remove all",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "0 metadata fields left",
+  "seconds": 7.9,
+  "t": 218.5
+ },
+ {
+  "name": "PDF Compress",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "227 KB \u2192 108 KB",
+  "seconds": 6.7,
+  "t": 225.8
+ },
+ {
+  "name": "PDF Split",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "3 PDFs",
+  "seconds": 6.4,
+  "t": 232.8
+ },
+ {
+  "name": "PDF Rotate",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "all pages at 90\u00b0",
+  "seconds": 6.4,
+  "t": 239.8
+ },
+ {
+  "name": "PDF Protect",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "AES-256, password works",
+  "seconds": 9.6,
+  "t": 250.0
+ },
+ {
+  "name": "PDF Extract images",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "1 image(s) in Report images/",
+  "seconds": 6.3,
+  "t": 257.0
+ },
+ {
+  "name": "PDF Metadata",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "author/title removed",
+  "seconds": 7.9,
+  "t": 265.5
+ },
+ {
+  "name": "Merge 2 PDFs",
+  "where": "explorer",
+  "status": "PASS",
+  "detail": "5 pages",
+  "seconds": 8.3,
+  "t": 274.4
+ },
+ {
+  "name": "Send To \u2192 PNG",
+  "where": "send-to",
+  "status": "PASS",
+  "detail": "Photo.png \u00b7 2400\u00d71600",
+  "seconds": 5.6,
+  "t": 280.5
+ },
+ {
+  "name": "Desktop: JPG \u2192 PNG",
+  "where": "desktop",
+  "status": "PASS",
+  "detail": "D-Photo.png \u00b7 2400\u00d71600",
+  "seconds": 5.8,
+  "t": 286.3
+ },
+ {
+  "name": "Desktop: PDF \u2192 TXT",
+  "where": "desktop",
+  "status": "PASS",
+  "detail": "D-Report.txt",
+  "seconds": 5.1,
+  "t": 292.0
+ },
+ {
+  "name": "Desktop: DOCX \u2192 PDF",
+  "where": "desktop",
+  "status": "PASS",
+  "detail": "D-Letter.pdf \u00b7 1 page(s)",
+  "seconds": 5.1,
+  "t": 297.7
+ },
+ {
+  "name": "Desktop: Compress",
+  "where": "desktop",
+  "status": "PASS",
+  "detail": "354 KB \u2192 185 KB (48% smaller)",
+  "seconds": 10.7,
+  "t": 309.1
+ },
+ {
+  "name": "Desktop: Crop",
+  "where": "desktop",
+  "status": "PASS",
+  "detail": "2400\u00d71600 \u2192 1600\u00d71600",
+  "seconds": 8.8,
+  "t": 318.5
+ },
+ {
+  "name": "Desktop: Add BG",
+  "where": "desktop",
+  "status": "PASS",
+  "detail": "800\u00d7533 \u2192 992\u00d7992",
+  "seconds": 10.2,
+  "t": 329.3
+ },
+ {
+  "name": "Desktop: 2 PDFs merge",
+  "where": "desktop",
+  "status": "PASS",
+  "detail": "5 pages",
+  "seconds": 7.4,
+  "t": 337.3
+ },
+ {
+  "name": "Drag picture kept out of the glass",
+  "where": "all",
+  "status": "PASS",
+  "detail": "hidden during 42 menu captures",
+  "seconds": 0,
+  "t": 0
+ }
+]
