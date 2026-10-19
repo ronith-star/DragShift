@@ -513,6 +513,15 @@ def selftest() -> int:
                       tools.ResizeWindow([str(src)], n), tools.ProtectWindow(str(pdf), n)):
                 w.close()
             ToastStack().info("ok", "ok").dismiss()
+            if IS_MAC:
+                from . import platform_mac
+                if platform_mac.can_read_text():   # Apple Vision is bundled and works
+                    from PIL import ImageDraw, ImageFont
+                    t = Image.new("RGB", (600, 120), "white")
+                    ImageDraw.Draw(t).text((20, 30), "DragShift works", fill="black",
+                                           font=ImageFont.truetype("/System/Library/Fonts/SFNS.ttf", 44))
+                    t.save(Path(d) / "text.png")
+                    assert "works" in imaging.read_text(Path(d) / "text.png")
         print("SELFTEST OK")
         return 0
     except Exception:
