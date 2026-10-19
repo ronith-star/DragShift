@@ -228,12 +228,6 @@ class WelcomeWindow(GlassWindow):
         box.addStretch(1)
         self.body.addLayout(box)
         self.body.addStretch(1)
-        if IS_MAC:
-            from . import platform_mac
-            if not platform_mac.has_screen_recording():
-                allow = QPushButton("Allow…")
-                allow.clicked.connect(platform_mac.request_screen_recording)
-                self.body.addWidget(form_card([("Screen Recording", "", allow)]))
         foot = QHBoxLayout()
         if IS_WIN or IS_MAC:
             self.auto = Switch(True)

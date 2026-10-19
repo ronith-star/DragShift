@@ -18,7 +18,6 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QSystemTrayIcon,
 from . import __version__, convert, glass, imaging, report, tools
 from .radial import Item, RadialMenu
 from .settings import Settings, SettingsWindow, WelcomeWindow, TRIGGERS
-from .toasts import ToastStack
 from .trigger import DragShiftWatcher
 from .util import UserError, category, keep, release
 
@@ -140,7 +139,6 @@ class DragShiftApp(QObject):
         self.settings.apply()
         self.pool = QThreadPool.globalInstance()
         self.windows: list[QWidget] = []
-        self.toasts = ToastStack()
         self.menu = RadialMenu(self.build_rings)
         self.menu.activated.connect(self.run_item)
 
@@ -207,8 +205,6 @@ class DragShiftApp(QObject):
             print(f"IPC: {len(files)} file(s) handed over", flush=True)
             if files:
                 self.queue_files(files)
-            elif data.get("show"):
-                self.toasts.info("DragShift is running", "")
             sock.disconnectFromServer()
             sock.deleteLater()
 
@@ -292,10 +288,10 @@ class DragShiftApp(QObject):
             else:
                 self.open_window(windows[name](paths[0], self.notify))
         except UserError as e:
-            self.toasts.error(f"Couldn't open {name}", str(e))
+            self.alert(f"Couldn't open {name}: {e}")
         except Exception as e:  # noqa: BLE001
             traceback.print_exc()
-            self.toasts.error(f"Couldn't open {name}", friendly_error(e))
+            self.alert(f"Couldn't open {name}: {friendly_error(e)}")
 
     @staticmethod
     def text_result(paths: list[str]) -> report.Result:
@@ -315,39 +311,36 @@ class DragShiftApp(QObject):
             w.show()
 
     def submit(self, action: str, srcs: list, fn, working: str = "Working…", extra: str = ""):
-        """Run in the background. A spinner card appears only if it takes > 150 ms."""
-        state = {"card": None, "finished": False}
+        """Run in the background, quietly: results appear next to the originals (or on the
+        clipboard), and a failure plays the system alert sound."""
         names = Path(srcs[0]).name if len(srcs) == 1 else f"{len(srcs)} files"
-
-        def show_spinner():
-            if not state["finished"]:
-                state["card"] = self.toasts.new()
-                state["card"].working(working, names)
-
-        QTimer.singleShot(150, show_spinner)
+        print(f"{working} {names}", flush=True)
         job = Job(action, srcs, fn, extra)
 
         def done(r):
             release(job)
-            state["finished"] = True
             if r.copy:
                 QGuiApplication.clipboard().setText(r.copy)
-            card = state["card"] or self.toasts.new()
-            card.done(r)
+            print(f"done: {r.title} {r.detail}".rstrip(), flush=True)
 
         def failed(msg):
             release(job)
-            state["finished"] = True
-            card = state["card"] or self.toasts.new()
-            card.error("Couldn't finish", msg)
+            self.alert(f"Couldn't finish {action}: {msg}")
 
         job.sig.done.connect(done)
         job.sig.failed.connect(failed)
         self.pool.start(keep(job))
 
     def notify(self, action: str, srcs: list, outs: list, extra: str = ""):
-        """Called by tool windows after they save."""
-        self.toasts.new().done(report.summarize(action, srcs, outs, extra))
+        """Called by tool windows after they save (nothing is shown; it goes to the log)."""
+        r = report.summarize(action, srcs, outs, extra)
+        print(f"done: {r.title} {r.detail}".rstrip(), flush=True)
+
+    @staticmethod
+    def alert(msg: str):
+        """No notifications: a failure plays the system alert sound and is written to the log."""
+        print(msg, flush=True)
+        QApplication.beep()
 
     # ------------------------------------------------------------ misc
     def _tray_click(self, reason):
@@ -478,8 +471,6 @@ def main(argv: list[str] | None = None) -> int:
         QTimer.singleShot(120, lambda: app.queue_files(files))
     elif not app.settings.get("welcomed"):
         QTimer.singleShot(300, app.show_welcome)
-    elif "--quiet" not in argv:
-        QTimer.singleShot(400, lambda: app.toasts.info("DragShift is running", ""))
     return qapp.exec()
 
 
@@ -512,7 +503,6 @@ def selftest() -> int:
                       tools.MetadataWindow(str(src), n), tools.CompressWindow([str(src)], n),
                       tools.ResizeWindow([str(src)], n), tools.ProtectWindow(str(pdf), n)):
                 w.close()
-            ToastStack().info("ok", "ok").dismiss()
             if IS_MAC:
                 from . import platform_mac
                 if platform_mac.can_read_text():   # Apple Vision is bundled and works

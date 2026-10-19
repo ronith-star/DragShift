@@ -4,8 +4,9 @@
   modifier state, with no Accessibility or Input Monitoring permission needed.
 * Capture: CGWindowListCreateImage can capture "everything below window N", which keeps
   Finder's drag picture and our own windows out of the glass (live refresh like Windows'
-  capture exclusion). Seeing other apps' windows needs the Screen Recording permission;
-  without it macOS returns just the wallpaper, which still makes a pleasant glass.
+  capture exclusion). It needs the Screen Recording permission, so it's only used once you've
+  allowed that in Settings; otherwise the glass is drawn without a backdrop and macOS is
+  never asked.
 * Start at login: a LaunchAgent plist.
 """
 from __future__ import annotations
@@ -151,10 +152,11 @@ def capture(x: int, y: int, w: int, h: int, below_window: int = 0):
 
 
 def has_screen_recording() -> bool:
+    """Whether Screen Recording is already allowed. Only checks: never makes macOS ask."""
     try:
-        return bool(Quartz.CGPreflightScreenCaptureAccess())
+        return OK and bool(Quartz.CGPreflightScreenCaptureAccess())
     except Exception:
-        return True
+        return False
 
 
 def request_screen_recording() -> bool:

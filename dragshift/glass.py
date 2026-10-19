@@ -374,14 +374,15 @@ class _LiquidJob(QRunnable):
 
 
 def grab_screen(x: int, y: int, w: int, h: int, below_window: int = 0):
-    """Screen pixels under a rect (logical coords) as a PIL image of size w×h.
-    macOS: native capture that leaves out the drag picture (and `below_window` and above)."""
+    """Screen pixels under a rect (logical coords) as a PIL image of size w×h, or None.
+    macOS: only if Screen Recording is already allowed, so DragShift never makes macOS ask
+    (without it the glass is drawn frosted, with nothing behind it to bend); the capture
+    leaves out the drag picture (and `below_window` and above)."""
     if sys.platform == "darwin":
         from . import platform_mac
-        if platform_mac.OK:
-            im = platform_mac.capture(x, y, w, h, below_window)
-            if im is not None:
-                return im
+        if not platform_mac.has_screen_recording():
+            return None
+        return platform_mac.capture(x, y, w, h, below_window)
     from PySide6.QtCore import QPoint
     from PySide6.QtGui import QGuiApplication
     scr = QGuiApplication.screenAt(QPoint(x + w // 2, y + h // 2)) or QGuiApplication.primaryScreen()
