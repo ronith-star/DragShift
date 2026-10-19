@@ -1,5 +1,5 @@
-"""The radial drop menu that pops up under the cursor while you Shift+drag a file: a frosted
-glass disc of rounded segments around a hub; the hub's capsule names the action you're on.
+"""The radial drop menu that pops up under the cursor while you Shift+drag a file: a small
+frosted glass disc of rounded segments around a hub; the hub's capsule names the action you're on.
 
 Rendering: the moment the menu opens we snapshot the screen behind it; a worker thread then
 refracts that snapshot through the disc (see liquid.py). Until that's ready (~60 ms) a cheap
@@ -29,14 +29,14 @@ class Item:
     symbol: str = ""         # SF Symbol name; formats have none, tools do
 
 
-SIZE = 400          # window size (room for the shadow)
-R_DISC = 170        # the glass disc
-R_OUT = 156         # segments' outer edge
-R_IN = 74           # segments' inner edge
-R_HUB = 62          # hub ring
-GAP = 9             # even gap between segments, px
-CORNER = 15         # segment corner radius
-CAP_H = 40          # centre capsule height
+SIZE = 340          # window size (room for the shadow)
+R_DISC = 128        # the glass disc
+R_OUT = 117         # segments' outer edge
+R_IN = 56           # segments' inner edge
+R_HUB = 46          # hub ring
+GAP = 7             # even gap between segments, px
+CORNER = 11         # segment corner radius
+CAP_H = 30          # centre capsule height
 
 
 def span(n: int, i: int) -> tuple[float, float]:
@@ -95,9 +95,9 @@ class _RenderJob(QRunnable):
             from . import liquid
             c = SIZE / 2
             sdf = liquid.sdf_circle(SIZE, SIZE, c, c, R_DISC)
-            img, _ = liquid.render(self.backdrop, sdf, liquid.GlassStyle(bezel=20, strength=14, blur=12),
+            img, _ = liquid.render(self.backdrop, sdf, liquid.GlassStyle(bezel=16, strength=11, blur=12),
                                    tint=(255, 255, 255, 0.16))
-            sh = liquid.shadow(sdf, spread=26, opacity=0.22, offset=(0, 8))
+            sh = liquid.shadow(sdf, spread=20, opacity=0.22, offset=(0, 6))
             sh.alpha_composite(img)
             try:
                 self.sig.done.emit(self.serial, glass.qimage_from_pil(sh))
@@ -427,7 +427,7 @@ class RadialMenu(QWidget):
             glass.paint_glass(p, circle_path(c, R_DISC),
                               th.glass if self.backdrop is not None else th.solid, self.backdrop)
         # frosted rim band and hub ring
-        band = circle_path(c, R_DISC - 1).subtracted(circle_path(c, R_OUT + 5))
+        band = circle_path(c, R_DISC - 1).subtracted(circle_path(c, R_OUT + 4))
         p.fillPath(band, QColor(255, 255, 255, 46))
         p.setPen(QPen(QColor(255, 255, 255, 120), 1.0))
         p.setBrush(QColor(255, 255, 255, 34 + int(30 * self.hub_spring)))
@@ -441,7 +441,7 @@ class RadialMenu(QWidget):
             h = self.spring[i] if i < len(self.spring) else 0.0
             a0, a1 = span(n, i)
             mid = math.radians((a0 + a1) / 2)
-            push = QPointF(4 * h * math.cos(mid), -4 * h * math.sin(mid))
+            push = QPointF(3 * h * math.cos(mid), -3 * h * math.sin(mid))
             seg = path.translated(push)
             p.fillPath(seg, th.segment)
             if h > 0.001:
@@ -453,37 +453,33 @@ class RadialMenu(QWidget):
             p.drawPath(seg)
             if i < len(items):
                 lm = math.radians((a0 + a1) / 2 + rot)
-                rc = (R_IN + R_OUT) / 2 + 2
+                rc = (R_IN + R_OUT) / 2 + 1
                 at = QPointF(c.x() + rc * math.cos(lm), c.y() - rc * math.sin(lm)) + push
                 self._label(p, at, items[i], h)
         self._capsule(p, c)
 
     def _label(self, p: QPainter, at: QPointF, it: Item, h: float):
-        """Uppercase heading, with the action's symbol above it for tools; the group is
-        centred on `at` by its visible (cap) height."""
+        """The action's name, with its symbol above it for tools; the group is centred on `at`
+        by its visible height (cap height for the text)."""
         p.save()
         p.setOpacity(p.opacity() * (0.25 + 0.75 * self._swap))
         col = QColor(255, 255, 255) if h > 0.5 else QColor(self.theme.label)
-        text = it.label.upper()
         if it.symbol or it.glyph:
-            f = glass.font(10, QFont.Bold)
-            f.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
+            f = glass.font(10, QFont.Medium)
             fm = QFontMetricsF(f)
-            pm = glass.symbol(it.symbol, 17, col, "medium") if it.symbol else None
-            sym_h = pm.height() / pm.devicePixelRatio() if pm is not None else 18
-            gap = 6
+            pm = glass.symbol(it.symbol, 15, col, "medium") if it.symbol else None
+            sym_h = pm.height() / pm.devicePixelRatio() if pm is not None else 16
+            gap = 5
             top = at.y() - (sym_h + gap + fm.capHeight()) / 2
-            glass.draw_symbol(p, it.symbol, QPointF(at.x(), top + sym_h / 2), 17, col, it.glyph, "medium")
+            glass.draw_symbol(p, it.symbol, QPointF(at.x(), top + sym_h / 2), 15, col, it.glyph, "medium")
             base = top + sym_h + gap + fm.capHeight()
         else:
-            f = glass.font(13, QFont.Bold)
-            f.setLetterSpacing(QFont.AbsoluteSpacing, 0.6)
+            f = glass.font(12, QFont.DemiBold)
             fm = QFontMetricsF(f)
             base = at.y() + fm.capHeight() / 2
         p.setFont(f)
         p.setPen(col)
-        w = fm.horizontalAdvance(text) - 0.6
-        p.drawText(QPointF(at.x() - w / 2, base), text)
+        p.drawText(QPointF(at.x() - fm.horizontalAdvance(it.label) / 2, base), it.label)
         p.restore()
 
     def _capsule(self, p: QPainter, c: QPointF):
@@ -496,17 +492,14 @@ class RadialMenu(QWidget):
             text = self.ring_names[self.ring_idx]
         else:
             text = "Drop here"
-        text = text.upper()
-        f = glass.font(12, QFont.Bold)
-        f.setLetterSpacing(QFont.AbsoluteSpacing, 0.6)
+        f = glass.font(12, QFont.DemiBold)
         fm = QFontMetricsF(f)
-        text = fm.elidedText(text, Qt.ElideRight, 2 * R_HUB - 40)
-        w = min(2 * R_HUB - 16, max(78.0, fm.horizontalAdvance(text) + 30))
+        text = fm.elidedText(text, Qt.ElideRight, 2 * R_HUB - 30)
+        w = min(2 * R_HUB - 12, max(62.0, fm.horizontalAdvance(text) + 24))
         r = QRectF(c.x() - w / 2, c.y() - CAP_H / 2, w, CAP_H)
         p.setPen(QPen(QColor(255, 255, 255, 170), 1.0))
         p.setBrush(self.theme.segment)
         p.drawRoundedRect(r, CAP_H / 2, CAP_H / 2)
         p.setFont(f)
         p.setPen(self.theme.label)
-        tw = fm.horizontalAdvance(text) - 0.6
-        p.drawText(QPointF(c.x() - tw / 2, c.y() + fm.capHeight() / 2), text)
+        p.drawText(QPointF(c.x() - fm.horizontalAdvance(text) / 2, c.y() + fm.capHeight() / 2), text)

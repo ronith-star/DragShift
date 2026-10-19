@@ -371,9 +371,6 @@ class DragShiftQApplication(QApplication):
 
 
 def mac_setup(qapp):
-    from PySide6.QtGui import QFont
-    for fam in ("Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI"):
-        QFont.insertSubstitutions(fam, [".AppleSystemUIFont", "SF Pro Display", "Helvetica Neue"])
     try:
         from . import platform_mac
         platform_mac.become_accessory()
@@ -432,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     qapp = DragShiftQApplication(argv)
     if IS_MAC:
         mac_setup(qapp)
+    qapp.setFont(glass.font(13))   # SF Pro on macOS, everywhere
     qapp.setApplicationName(APP_NAME)
     qapp.setApplicationVersion(VERSION)
     qapp.setQuitOnLastWindowClosed(False)

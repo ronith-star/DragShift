@@ -10,16 +10,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import (QBrush, QColor, QFont, QIcon, QImage, QLinearGradient, QPainter,
-                           QPainterPath, QPen, QPixmap)
+from PySide6.QtGui import (QBrush, QColor, QFont, QFontDatabase, QIcon, QImage, QLinearGradient,
+                           QPainter, QPainterPath, QPen, QPixmap)
 
 IS_MAC = sys.platform == "darwin"
-FONT_FAMILY = ".AppleSystemUIFont" if IS_MAC else "Segoe UI Variable Text"
 
 
 def font(px: float, weight: QFont.Weight = QFont.Normal) -> QFont:
-    """The system UI font (SF Pro on macOS) at a pixel size."""
-    f = QFont(FONT_FAMILY)
+    """The system UI font as the OS hands it out (SF Pro on macOS, with Apple's optical sizes;
+    Segoe UI on Windows) at a pixel size."""
+    f = QFontDatabase.systemFont(QFontDatabase.GeneralFont)
     f.setPixelSize(max(1, int(round(px))))
     f.setWeight(weight)
     return f
@@ -183,7 +183,7 @@ def paint_glass(p: QPainter, path: QPainterPath, tint: QColor, backdrop: QPixmap
 # ---------------------------------------------------------------- Qt style sheet
 def qss(t: Theme | None = None) -> str:
     """Controls in the style of macOS 26: capsule buttons, accent for the primary action and
-    selections, quiet fields, SF Pro throughout."""
+    selections, quiet fields. The font is the application font (the system font, see app.py)."""
     t = t or theme()
     a = t.accent
     hover, pressed = a.lighter(112), a.darker(112)
@@ -193,7 +193,7 @@ def qss(t: Theme | None = None) -> str:
     down = symbol_file("chevron.down", 8, t.label2)
     img = lambda f, w, h: f"image: url({f}); width: {w}px; height: {h}px;" if f else ""
     return f"""
-* {{ color: {css(t.label)}; font-family: "{FONT_FAMILY}"; font-size: 13px; }}
+* {{ color: {css(t.label)}; font-size: 13px; }}
 QWidget#glassRoot {{ background: transparent; }}
 QLabel#title {{ font-size: 13px; font-weight: 600; }}
 QLabel#heading {{ font-size: 22px; font-weight: 700; }}

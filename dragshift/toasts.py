@@ -1,9 +1,9 @@
-"""Glass notifications in the style of Apple's banners: top-right on macOS (bottom-right on
-Windows), stacked.
+"""Notifications in the style of macOS banners: top-right on macOS (bottom-right on Windows),
+stacked. Icon or thumbnail, a bold title, one line, and "now"; while the pointer is over a
+result, Open and Undo appear (Undo moves the new files to the Trash/Recycle Bin), and a click
+anywhere else shows the file in Finder/Explorer.
 
-A card appears immediately while work runs (spinner), then turns into the result:
-thumbnail, what changed (e.g. "2.4 MB → 610 KB · 75% smaller") and actions:
-Open · Show in Finder/folder · Undo (moves the new files to the Trash/Recycle Bin)."""
+A card appears immediately while work runs (spinner), then turns into the result."""
 from __future__ import annotations
 
 import math
@@ -21,15 +21,27 @@ from PySide6.QtWidgets import QWidget
 from . import glass
 from .report import Result
 
-W = 360
-H_SHORT, H_TALL = 64, 98   # without / with action buttons
+W = 344
+H_SHORT, H_TALL = 64, 80   # one line / an error that needs two
 GAP = 8
 MARGIN = 12
-RADIUS = 22
-PAD = 14
-LEAD = 40                 # thumbnail / icon size
-TX = PAD + LEAD + 12      # text column
+RADIUS = 20
+PAD = 13
+LEAD = 38                 # thumbnail / app icon size
+TX = PAD + LEAD + 11      # text column
 TOP_RIGHT = sys.platform == "darwin"   # where macOS shows notifications
+_APP_ICON: QPixmap | None = None
+
+
+def app_icon() -> QPixmap:
+    global _APP_ICON
+    if _APP_ICON is None:
+        pm = QPixmap(str(Path(__file__).with_name("assets") / "dragshift.png"))
+        if not pm.isNull():
+            pm = pm.scaled(2 * LEAD, 2 * LEAD, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pm.setDevicePixelRatio(2.0)
+        _APP_ICON = pm
+    return _APP_ICON
 
 
 def reveal(path: str | Path):
@@ -105,9 +117,8 @@ class ToastCard(QWidget):
 
     # ------------------------------------------------------------ state
     def _fit(self):
-        """Tall with action buttons, short otherwise; the stack re-flows when this changes."""
-        tall = (self.state == "done" and self.result and self.result.outs) or (self.state == "error" and self.detail)
-        h = H_TALL if tall else H_SHORT
+        """Taller only for an error that needs two lines; the stack re-flows when this changes."""
+        h = H_TALL if self.state == "error" and self.detail else H_SHORT
         if h != self.h:
             self.h = h
             if self.isVisible():
@@ -124,7 +135,10 @@ class ToastCard(QWidget):
         self.state, self.result = "done", r
         outs = r.outs or []
         self.title, self.good = r.title, r.good
-        self.detail = Path(outs[0]).name if len(outs) == 1 else f"{len(outs)} files" if outs else ""
+        if any(ch.isdigit() for ch in r.good):     # a figure, like "75% smaller"
+            self.detail = r.good[0].upper() + r.good[1:]
+        else:
+            self.detail = Path(outs[0]).name if len(outs) == 1 else f"{len(outs)} files" if outs else ""
         self.thumb = None
         if r.thumb is not None:
             pm = QPixmap(str(r.thumb))
@@ -142,6 +156,7 @@ class ToastCard(QWidget):
     def info(self, title: str, detail: str, ms: int = 4500):
         self.spinner.stop()
         self.state, self.title, self.detail = "info", title, detail
+        self.thumb = None
         self.life.start(ms)
         self._fit()
 
@@ -223,20 +238,16 @@ class ToastCard(QWidget):
         if name == "Open":
             open_file(r.outs[0])
             self.dismiss()
-        elif name == "Show":
-            reveal(r.outs[0])
-            self.dismiss()
         elif name == "Undo":
             trash(r.outs)
             self.result = None
-            self.thumb = None
             self.good = ""
             bin_name = "Trash" if sys.platform == "darwin" else "Recycle Bin"
             self.info(f"Moved to {bin_name}", "", 2500)
 
     # ------------------------------------------------------------ paint
     def _close_rect(self) -> QRectF:
-        return QRectF(W - 30, 8, 22, 22)
+        return QRectF(4, 4, 18, 18) if self.hovered else QRectF()
 
     def _spinner(self, p: QPainter, c: QPointF, col: QColor):
         """Apple's activity indicator: eight spokes, fading behind the leading one."""
@@ -247,9 +258,9 @@ class ToastCard(QWidget):
             fade = ((i - step) % 8) / 8
             q = QColor(col)
             q.setAlphaF(col.alphaF() * (1 - 0.8 * fade))
-            p.setPen(QPen(q, 2.4, Qt.SolidLine, Qt.RoundCap))
-            p.drawLine(QPointF(c.x() + 5.5 * math.cos(a), c.y() - 5.5 * math.sin(a)),
-                       QPointF(c.x() + 10.5 * math.cos(a), c.y() - 10.5 * math.sin(a)))
+            p.setPen(QPen(q, 1.8, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(QPointF(c.x() + 3.8 * math.cos(a), c.y() - 3.8 * math.sin(a)),
+                       QPointF(c.x() + 7.5 * math.cos(a), c.y() - 7.5 * math.sin(a)))
         p.restore()
 
     def paintEvent(self, e):
@@ -267,17 +278,11 @@ class ToastCard(QWidget):
         else:
             glass.paint_glass(p, path, t.solid)
 
-        has_buttons = self.state == "done" and bool(self.result and self.result.outs)
-        wrap = self.state == "error"      # errors may need two lines to say what went wrong
-        top = PAD if self.h == H_TALL else (self.h - LEAD) / 2
-        lead = QRectF(PAD, top, LEAD, LEAD)
-
-        # leading visual: spinner / thumbnail / symbol
-        if self.state == "working":
-            self._spinner(p, lead.center(), t.label2)
-        elif self.thumb is not None:
+        # leading picture: the result's thumbnail, else the app icon
+        lead = QRectF(PAD, (self.h - LEAD) / 2 if self.h == H_SHORT else PAD, LEAD, LEAD)
+        if self.thumb is not None:
             clip = QPainterPath()
-            clip.addRoundedRect(lead, 9, 9)
+            clip.addRoundedRect(lead, 8, 8)
             p.save()
             p.setClipPath(clip)
             sw, sh = self.thumb.width(), self.thumb.height()
@@ -286,78 +291,72 @@ class ToastCard(QWidget):
             p.restore()
             p.setPen(QPen(t.separator, 1))
             p.setBrush(Qt.NoBrush)
-            p.drawRoundedRect(lead, 9, 9)
+            p.drawRoundedRect(lead, 8, 8)
         else:
-            name, col, glyph = {
-                "done": ("checkmark.circle.fill", t.green, "✓"),
-                "error": ("exclamationmark.triangle.fill", t.orange, "!"),
-            }.get(self.state, ("info.circle.fill", t.accent, "i"))
-            if self.title.startswith("Moved to"):
-                name, glyph = "arrow.uturn.backward.circle.fill", "↺"
-            glass.draw_symbol(p, name, lead.center(), 30, col, glyph)
+            icon = app_icon()
+            if not icon.isNull():
+                p.drawPixmap(lead, icon, QRectF(icon.rect()))
 
-        tw = W - TX - 34
-        tf = glass.font(13, QFont.DemiBold)
-        fm = QFontMetrics(tf)
-        p.setFont(tf)
-        title = fm.elidedText(self.title, Qt.ElideRight, int(tw))
-        block = 18 + (19 if self.detail else 0)
-        ty = top + (LEAD - block) / 2 if not wrap else top + 1
-        p.setPen(t.label)
-        p.drawText(QRectF(TX, ty, tw, 18), Qt.AlignLeft | Qt.AlignVCenter, title)
-        # highlighted figure (e.g. "75% smaller")
-        if self.good:
-            gf = glass.font(11, QFont.DemiBold)
-            gw = QFontMetrics(gf).horizontalAdvance(self.good) + 12
-            gx = TX + fm.horizontalAdvance(title) + 7
-            if gx + gw < W - 34:
-                chip = QRectF(gx, ty + 1, gw, 16)
-                bg = QColor(t.green)
-                bg.setAlpha(46)
-                p.setPen(Qt.NoPen)
-                p.setBrush(bg)
-                p.drawRoundedRect(chip, 8, 8)
-                p.setFont(gf)
-                p.setPen(t.green)
-                p.drawText(chip, Qt.AlignCenter, self.good)
-        if self.detail:
-            df = glass.font(12)
-            p.setFont(df)
-            p.setPen(t.label2)
-            if wrap:
-                p.drawText(QRectF(TX, ty + 19, tw + 18, self.h - ty - 19 - PAD),
-                           Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, self.detail)
-            else:
-                p.drawText(QRectF(TX, ty + 19, tw + 18, 17), Qt.AlignLeft | Qt.AlignVCenter,
-                           QFontMetrics(df).elidedText(self.detail, Qt.ElideMiddle, int(tw + 18)))
-
-        # close button, shown while the pointer is over the card
-        if self.hovered:
-            cr = self._close_rect()
-            p.setPen(Qt.NoPen)
-            p.setBrush(t.fill2)
-            p.drawEllipse(cr)
-            glass.draw_symbol(p, "xmark", cr.center(), 9, t.label2, "✕", "bold")
-
-        # action buttons
+        # right side: "now", a spinner while working, or Open / Undo while hovered
         self.buttons = []
-        if has_buttons:
-            labels = {"Open": "Open", "Show": "Show in Finder" if sys.platform == "darwin" else "Show in folder",
-                      "Undo": "Undo"}
+        right = W - PAD
+        actions = self.hovered and self.state == "done" and bool(self.result and self.result.outs)
+        if actions:
             bf = glass.font(12, QFont.Medium)
-            p.setFont(bf)
             bfm = QFontMetrics(bf)
-            bx = TX
-            for i, nme in enumerate(("Open", "Show", "Undo")):
-                bw = bfm.horizontalAdvance(labels[nme]) + 22
-                br = QRectF(bx, self.h - PAD - 24, bw, 24)
-                self.buttons.append((nme, br))
+            p.setFont(bf)
+            x = right
+            for i, name in reversed(list(enumerate(("Open", "Undo")))):
+                bw = bfm.horizontalAdvance(name) + 20
+                br = QRectF(x - bw, (self.h - 24) / 2, bw, 24)
+                self.buttons.insert(0, (name, br))
                 p.setPen(Qt.NoPen)
                 p.setBrush(t.fill2 if self.hover_btn == i else t.fill)
                 p.drawRoundedRect(br, 12, 12)
                 p.setPen(t.label)
-                p.drawText(br, Qt.AlignCenter, labels[nme])
-                bx += bw + 6
+                p.drawText(br, Qt.AlignCenter, name)
+                x -= bw + 6
+            right = x - 4
+        elif self.state == "working":
+            self._spinner(p, QPointF(right - 8, self.h / 2), t.label2)
+            right -= 24
+        else:
+            nf = glass.font(11)
+            p.setFont(nf)
+            p.setPen(t.label2)
+            nw = QFontMetrics(nf).horizontalAdvance("now")
+            p.drawText(QRectF(right - nw, PAD - 1, nw, 18), Qt.AlignRight | Qt.AlignVCenter, "now")
+            right -= nw + 8
+
+        # title and one line
+        tw = right - TX
+        tf = glass.font(13, QFont.DemiBold)
+        df = glass.font(13)
+        lines = 2 if self.state == "error" and self.h == H_TALL else 1
+        block = 17 + (17 * lines if self.detail else 0)
+        ty = (self.h - block) / 2
+        p.setFont(tf)
+        p.setPen(t.label)
+        p.drawText(QRectF(TX, ty, tw, 17), Qt.AlignLeft | Qt.AlignVCenter,
+                   QFontMetrics(tf).elidedText(self.title, Qt.ElideRight, int(tw)))
+        if self.detail:
+            p.setFont(df)
+            p.setPen(t.label2)
+            dw = (W - PAD - TX) if lines == 2 else tw
+            if lines == 2:
+                p.drawText(QRectF(TX, ty + 17, dw, 34), Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap,
+                           self.detail)
+            else:
+                p.drawText(QRectF(TX, ty + 17, dw, 17), Qt.AlignLeft | Qt.AlignVCenter,
+                           QFontMetrics(df).elidedText(self.detail, Qt.ElideMiddle, int(dw)))
+
+        # close button on hover, top-left like macOS
+        if self.hovered:
+            cr = self._close_rect()
+            p.setPen(QPen(t.separator, 1))
+            p.setBrush(QColor(255, 255, 255, 235))
+            p.drawEllipse(cr)
+            glass.draw_symbol(p, "xmark", cr.center(), 8, t.label2, "✕", "bold")
 
 
 class ToastStack:
