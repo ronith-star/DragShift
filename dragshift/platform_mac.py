@@ -290,7 +290,8 @@ def recognize_text(im) -> str:
 
 
 # ---------------------------------------------------------------- start at login
-AGENT = Path.home() / "Library" / "LaunchAgents" / "com.dragshift.app.plist"
+AGENT_LABEL = "io.github.ronith-star.orbit"
+AGENT = Path.home() / "Library" / "LaunchAgents" / f"{AGENT_LABEL}.plist"
 
 
 def _program() -> list[str]:
@@ -307,7 +308,7 @@ def set_autostart(on: bool):
     if on:
         AGENT.parent.mkdir(parents=True, exist_ok=True)
         with open(AGENT, "wb") as f:
-            plistlib.dump({"Label": "com.dragshift.app", "ProgramArguments": _program(),
+            plistlib.dump({"Label": AGENT_LABEL, "ProgramArguments": _program(),
                            "RunAtLoad": True, "ProcessType": "Interactive"}, f)
     elif AGENT.exists():
         AGENT.unlink()

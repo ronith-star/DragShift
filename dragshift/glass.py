@@ -375,7 +375,7 @@ class _LiquidJob(QRunnable):
 
 def grab_screen(x: int, y: int, w: int, h: int, below_window: int = 0):
     """Screen pixels under a rect (logical coords) as a PIL image of size w×h, or None.
-    macOS: only if Screen Recording is already allowed, so DragShift never makes macOS ask
+    macOS: only if Screen Recording is already allowed, so Orbit never makes macOS ask
     (without it the glass is drawn frosted, with nothing behind it to bend); the capture
     leaves out the drag picture (and `below_window` and above)."""
     if sys.platform == "darwin":

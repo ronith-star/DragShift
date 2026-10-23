@@ -90,8 +90,8 @@ def prepare_desktop(wallpaper_colors=("#ffb36b", "#ff5f6d", "#c2508f", "#7b8cff"
     subprocess.run(["taskkill", "/F", "/IM", "ServerManager.exe"], capture_output=True)
     adv = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
     subprocess.run(["reg", "add", adv, "/v", "HideFileExt", "/t", "REG_DWORD", "/d", "0", "/f"], capture_output=True)
-    # DragShift: skip the welcome window
-    subprocess.run(["reg", "add", r"HKCU\Software\DragShift\DragShift", "/v", "welcomed", "/t", "REG_SZ",
+    # Orbit: skip the welcome window
+    subprocess.run(["reg", "add", r"HKCU\Software\Orbit\Orbit", "/v", "welcomed", "/t", "REG_SZ",
                     "/d", "true", "/f"], capture_output=True)
     user32.SendMessageTimeoutW(0xFFFF, 0x1A, 0, "Environment", 2, 1000, None)
     dismiss_system_dialogs()
@@ -105,7 +105,7 @@ def dismiss_system_dialogs():
         for w in uia().windows():
             try:
                 r = w.rectangle()
-                if r.width() > 800 or "DragShift" in w.window_text():
+                if r.width() > 800 or "Orbit" in w.window_text():
                     continue
                 ok = w.child_window(title="OK", control_type="Button")
                 if ok.exists(timeout=0.2):
@@ -118,7 +118,7 @@ def dismiss_system_dialogs():
 
 
 def copy_app_log(dest: Path):
-    src = Path(os.environ.get("LOCALAPPDATA", "")) / "DragShift" / "log.txt"
+    src = Path(os.environ.get("LOCALAPPDATA", "")) / "Orbit" / "log.txt"
     try:
         if src.exists():
             dest.write_bytes(src.read_bytes())

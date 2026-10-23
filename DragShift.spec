@@ -27,7 +27,7 @@ a.datas = [d for d in a.datas if "translations" not in d[0].replace("\\", "/")]
 pyz = PYZ(a.pure)
 import sys
 IS_MAC = sys.platform == "darwin"
-common = dict(name="DragShift", console=False, upx=False)
+common = dict(name="Orbit", console=False, upx=False)
 if IS_MAC:
     common.update(icon="dragshift/assets/dragshift.icns")
 else:
@@ -35,15 +35,15 @@ else:
 
 if IS_MAC:
     exe = EXE(pyz, a.scripts, [], exclude_binaries=True, argv_emulation=False, **common)
-    coll = COLLECT(exe, a.binaries, a.datas, name="DragShift", upx=False)
+    coll = COLLECT(exe, a.binaries, a.datas, name="Orbit", upx=False)
     app = BUNDLE(
         coll,
-        name="DragShift.app",
+        name="Orbit.app",
         icon="dragshift/assets/dragshift.icns",
-        bundle_identifier="com.dragshift.app",
+        bundle_identifier="io.github.ronith-star.orbit",
         info_plist={
-            "CFBundleName": "DragShift",
-            "CFBundleDisplayName": "DragShift",
+            "CFBundleName": "Orbit",
+            "CFBundleDisplayName": "Orbit",
             "CFBundleShortVersionString": "1.1.0",
             "CFBundleVersion": "1.1.0",
             "LSUIElement": True,                 # menu-bar app, no Dock icon
@@ -63,4 +63,4 @@ elif onefile:
     exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], **common)
 else:
     exe = EXE(pyz, a.scripts, [], exclude_binaries=True, **common)
-    coll = COLLECT(exe, a.binaries, a.datas, name="DragShift", upx=False)
+    coll = COLLECT(exe, a.binaries, a.datas, name="Orbit", upx=False)

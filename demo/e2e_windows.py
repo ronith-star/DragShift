@@ -224,9 +224,9 @@ def run(name: str, where: str, files: list[str], ring: str, label: str, verify, 
         pyautogui.keyUp("shift")
         pyautogui.press("esc")
         time.sleep(0.5)
-        # close any stray DragShift window
+        # close any stray Orbit window
         try:
-            for w in wk.uia().windows(title_re=".*— DragShift"):
+            for w in wk.uia().windows(title_re=".*· Orbit"):
                 w.close()
         except Exception:
             pass
@@ -608,7 +608,7 @@ def main():
             wk.log("drag image check failed", e)
         passed = sum(r["status"] == "PASS" for r in RESULTS)
         (OUT / "results.json").write_text(json.dumps(RESULTS, indent=1))
-        lines = [f"# DragShift end-to-end test — {passed}/{len(RESULTS)} passed", "",
+        lines = [f"# Orbit end-to-end test — {passed}/{len(RESULTS)} passed", "",
                  "| # | Where | Scenario | Result | Detail | Time |", "|---|---|---|---|---|---|"]
         for i, r in enumerate(RESULTS, 1):
             mark = "✅" if r["status"] == "PASS" else "❌"

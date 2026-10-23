@@ -43,7 +43,7 @@ class UserError(Exception):
 
 # Runtime options (filled from Settings at start-up; plain values so worker threads can read them)
 CONFIG = {
-    "output": "next",        # "next" = beside the original, "folder" = a "DragShift" subfolder
+    "output": "next",        # "next" = beside the original, "folder" = an "Orbit" subfolder
     "jpg_quality": 90,
     "pdf_dpi": 200,
 }
@@ -52,7 +52,7 @@ CONFIG = {
 def output_dir(src: str | Path) -> Path:
     d = Path(src).parent
     if CONFIG.get("output") == "folder":
-        d = d / "DragShift"
+        d = d / "Orbit"
         d.mkdir(exist_ok=True)
     return d
 

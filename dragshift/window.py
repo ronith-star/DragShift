@@ -117,7 +117,7 @@ class GlassWindow(QWidget):
 
     def __init__(self, title: str, parent=None, size=(760, 640)):
         super().__init__(parent)
-        self.setWindowTitle(f"{title} · DragShift" if title else "DragShift")
+        self.setWindowTitle(f"{title} · Orbit" if title else "Orbit")
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_DeleteOnClose)

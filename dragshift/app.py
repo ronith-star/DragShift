@@ -1,4 +1,4 @@
-"""DragShift: Shift+drag any file to convert or edit it from a radial liquid-glass menu."""
+"""Orbit: Shift+drag any file to convert or edit it from a radial liquid-glass menu."""
 from __future__ import annotations
 
 import json
@@ -21,7 +21,7 @@ from .settings import Settings, SettingsWindow, WelcomeWindow, TRIGGERS
 from .trigger import DragShiftWatcher
 from .util import UserError, category, keep, release
 
-APP_NAME = "DragShift"
+APP_NAME = "Orbit"
 VERSION = __version__
 IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
@@ -83,7 +83,7 @@ def friendly_error(e: Exception) -> str:
     if isinstance(e, PermissionError) or "permission denied" in low:
         return "No permission to write next to this file. Try a folder you own, or set Settings → Save results → subfolder."
     if "cannot identify image" in low:
-        return "This file doesn't look like an image DragShift can read."
+        return "This file doesn't look like an image Orbit can read."
     if isinstance(e, FileNotFoundError):
         return "The file was moved or deleted."
     return msg
@@ -375,7 +375,7 @@ class DragShiftApp(QObject):
             self.open_dialog()
 
     def open_dialog(self):
-        files, _ = QFileDialog.getOpenFileNames(None, "Choose file(s) for DragShift", QDir.homePath())
+        files, _ = QFileDialog.getOpenFileNames(None, "Choose file(s) for Orbit", QDir.homePath())
         if files:
             self.show_click_menu(files)
 
@@ -439,18 +439,18 @@ def send_to_running(payload: dict) -> bool:
 
 
 def setup_logging():
-    """Errors go to %LOCALAPPDATA%\\DragShift\\log.txt (pythonw / the .exe have no console)."""
+    """Errors go to %LOCALAPPDATA%\\Orbit\\log.txt (pythonw / the .exe have no console)."""
     import faulthandler
     if IS_MAC:
-        base = Path.home() / "Library" / "Logs" / "DragShift"
+        base = Path.home() / "Library" / "Logs" / "Orbit"
     else:
-        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share") / "DragShift"
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share") / "Orbit"
     base.mkdir(parents=True, exist_ok=True)
     path = base / "log.txt"
     if path.exists() and path.stat().st_size > 1_000_000:
         path.replace(base / "log.old.txt")
     f = open(path, "a", encoding="utf-8", buffering=1)
-    f.write(f"\n==== DragShift {VERSION} started {time.strftime('%Y-%m-%d %H:%M:%S')} ====\n")
+    f.write(f"\n==== Orbit {VERSION} started {time.strftime('%Y-%m-%d %H:%M:%S')} ====\n")
     if sys.stderr is None or getattr(sys, "frozen", False) or sys.executable.lower().endswith("pythonw.exe"):
         sys.stdout = sys.stderr = f
     faulthandler.enable(f)
@@ -470,7 +470,7 @@ def main(argv: list[str] | None = None) -> int:
     if IS_WIN:
         try:  # crisp taskbar/tray icon grouping
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("DragShift.App")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Orbit.App")
         except Exception:
             pass
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
@@ -493,7 +493,7 @@ def main(argv: list[str] | None = None) -> int:
     qapp.file_opened.connect(lambda f: app.queue_files([f]))
     if qapp.early_files:
         app.queue_files(list(qapp.early_files))
-    if files:  # e.g. "Send to → DragShift" or drag onto the .exe
+    if files:  # e.g. "Send to → Orbit" or drag onto the .exe
         QTimer.singleShot(120, lambda: app.queue_files(files))
     elif not app.settings.get("welcomed"):
         QTimer.singleShot(300, app.show_welcome)
@@ -534,7 +534,7 @@ def selftest() -> int:
                 if platform_mac.can_read_text():   # Apple Vision is bundled and works
                     from PIL import ImageDraw, ImageFont
                     t = Image.new("RGB", (600, 120), "white")
-                    ImageDraw.Draw(t).text((20, 30), "DragShift works", fill="black",
+                    ImageDraw.Draw(t).text((20, 30), "Orbit works", fill="black",
                                            font=ImageFont.truetype("/System/Library/Fonts/SFNS.ttf", 44))
                     t.save(Path(d) / "text.png")
                     assert "works" in imaging.read_text(Path(d) / "text.png")

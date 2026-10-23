@@ -417,8 +417,8 @@ def main():
     gradient((1920, 1080), ["#ffb36b", "#ff5f6d", "#c2508f", "#7b8cff"], 160).save(wall)
     osa(f'tell application "System Events" to tell every desktop to set picture to "{wall}"')
     osa('tell application "System Events" to set visible of every process whose name is not "Finder" to false')
-    sh(["defaults", "write", "com.dragshift.DragShift", "welcomed", "-bool", "true"])
-    sh(["defaults", "write", "DragShift", "welcomed", "-string", "true"])
+    sh(["defaults", "write", "com.orbit.Orbit", "welcomed", "-bool", "true"])
+    sh(["defaults", "write", "Orbit", "welcomed", "-string", "true"])
     env = dict(os.environ, DRAGSHIFT_RECORDING="1")
     app = subprocess.Popen([sys.executable, "-m", "dragshift", "--quiet"], cwd=str(ROOT), env=env)
     time.sleep(6)
@@ -479,12 +479,12 @@ def main():
             except Exception:
                 rec.send_signal(signal.SIGINT)
         app.terminate()
-        logp = Path.home() / "Library" / "Logs" / "DragShift" / "log.txt"
+        logp = Path.home() / "Library" / "Logs" / "Orbit" / "log.txt"
         if logp.exists():
             shutil.copy(logp, OUT / "app_log.txt")
         passed = sum(r["status"] == "PASS" for r in RESULTS)
         (OUT / "results.json").write_text(json.dumps(RESULTS, indent=1))
-        lines = [f"# DragShift macOS end-to-end — {passed}/{len(RESULTS)} passed", "",
+        lines = [f"# Orbit macOS end-to-end — {passed}/{len(RESULTS)} passed", "",
                  "| # | Scenario | Result | Detail | Time |", "|---|---|---|---|---|"]
         for i, r in enumerate(RESULTS, 1):
             lines.append(f"| {i} | {r['name']} | {'✅' if r['status'] == 'PASS' else '❌'} | {r['detail']} | {r['seconds']}s |")

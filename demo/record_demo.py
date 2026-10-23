@@ -1,4 +1,4 @@
-"""Records the DragShift showcase video on a real Windows desktop (GitHub Actions runner).
+"""Records the Orbit showcase video on a real Windows desktop (GitHub Actions runner).
 Outputs demo_out/: demo_raw.mp4, steps.json (caption timestamps), results/ (files it made)."""
 from __future__ import annotations
 

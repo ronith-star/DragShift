@@ -35,7 +35,7 @@ jobs:
       - name: Build app folder (for the installer)
         run: pyinstaller DragShift.spec --noconfirm
 
-      - name: Build portable DragShift.exe
+      - name: Build portable Orbit.exe
         run: pyinstaller DragShift.spec --noconfirm
         env:
           ONEFILE: "1"
@@ -45,8 +45,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          $log = "$env:LOCALAPPDATA\DragShift\log.txt"
-          foreach ($exe in @("dist\DragShift\DragShift.exe", "dist\DragShift.exe")) {
+          $log = "$env:LOCALAPPDATA\Orbit\log.txt"
+          foreach ($exe in @("dist\Orbit\Orbit.exe", "dist\Orbit.exe")) {
             $p = Start-Process -FilePath $exe -ArgumentList "--selftest" -PassThru
             if (-not $p.WaitForExit(180000)) {   # never hang on an error dialog
               $p.Kill()
@@ -59,7 +59,7 @@ jobs:
             }
             "Self-test passed: $exe"
           }
-          "{0:N1} MB portable" -f ((Get-Item dist\DragShift.exe).Length / 1MB)
+          "{0:N1} MB portable" -f ((Get-Item dist\Orbit.exe).Length / 1MB)
 
       - name: Build installer
         shell: pwsh
@@ -71,31 +71,31 @@ jobs:
           }
           & $iscc installer\DragShift.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
-          "{0:N1} MB installer" -f ((Get-Item dist\DragShift-Setup.exe).Length / 1MB)
+          "{0:N1} MB installer" -f ((Get-Item dist\Orbit-Setup.exe).Length / 1MB)
 
       - name: Test the installer (silent install, run, uninstall)
         shell: pwsh
         run: |
-          $p = Start-Process dist\DragShift-Setup.exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=contextmenu" -Wait -PassThru
+          $p = Start-Process dist\Orbit-Setup.exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=contextmenu" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Install failed ($($p.ExitCode))" }
-          $app = "$env:LOCALAPPDATA\Programs\DragShift\DragShift.exe"
+          $app = "$env:LOCALAPPDATA\Programs\Orbit\Orbit.exe"
           if (-not (Test-Path $app)) { throw "App not installed" }
-          if (-not (Test-Path "HKCU:\Software\Classes\*\shell\DragShift\command")) { throw "Context menu not registered" }
+          if (-not (Test-Path "HKCU:\Software\Classes\*\shell\Orbit\command")) { throw "Context menu not registered" }
           $env:QT_QPA_PLATFORM = "offscreen"
           $t = Start-Process $app -ArgumentList "--selftest" -Wait -PassThru
           if ($t.ExitCode -ne 0) { throw "Installed app self-test failed" }
           Remove-Item Env:QT_QPA_PLATFORM
-          $u = Start-Process "$env:LOCALAPPDATA\Programs\DragShift\unins000.exe" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES" -Wait -PassThru
+          $u = Start-Process "$env:LOCALAPPDATA\Programs\Orbit\unins000.exe" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES" -Wait -PassThru
           Start-Sleep 3
-          if (Test-Path "HKCU:\Software\Classes\*\shell\DragShift") { throw "Uninstall left the context menu behind" }
+          if (Test-Path "HKCU:\Software\Classes\*\shell\Orbit") { throw "Uninstall left the context menu behind" }
           "Installer OK"
 
       - uses: actions/upload-artifact@v4
         with:
           name: windows
           path: |
-            dist/DragShift.exe
-            dist/DragShift-Setup.exe
+            dist/Orbit.exe
+            dist/Orbit-Setup.exe
 
   macos:
     strategy:
@@ -125,16 +125,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
-      - name: Build DragShift.app
+      - name: Build Orbit.app
         run: pyinstaller DragShift.spec --noconfirm
 
       - name: Self-test the app bundle
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          dist/DragShift.app/Contents/MacOS/DragShift --selftest || { tail -80 ~/Library/Logs/DragShift/log.txt; exit 1; }
-          codesign --verify --deep --verbose=2 dist/DragShift.app || true
-          /usr/libexec/PlistBuddy -c "Print :LSUIElement" dist/DragShift.app/Contents/Info.plist
+          dist/Orbit.app/Contents/MacOS/Orbit --selftest || { tail -80 ~/Library/Logs/Orbit/log.txt; exit 1; }
+          codesign --verify --deep --verbose=2 dist/Orbit.app || true
+          /usr/libexec/PlistBuddy -c "Print :LSUIElement" dist/Orbit.app/Contents/Info.plist
 
       - name: Sign & notarize the app (only when Apple credentials are configured)
         env:
@@ -158,33 +158,33 @@ jobs:
           security list-keychains -d user -s $KC $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPW" $KC
           # sign every nested binary first, then the bundle (hardened runtime + timestamp)
-          find dist/DragShift.app/Contents -type f \( -name "*.so" -o -name "*.dylib" -o -perm -111 \) -print0 |
+          find dist/Orbit.app/Contents -type f \( -name "*.so" -o -name "*.dylib" -o -perm -111 \) -print0 |
             xargs -0 -I{} codesign --force --timestamp --options runtime --entitlements installer/entitlements.plist --sign "$MACOS_SIGN_IDENTITY" "{}" || true
-          codesign --force --deep --timestamp --options runtime --entitlements installer/entitlements.plist --sign "$MACOS_SIGN_IDENTITY" dist/DragShift.app
-          codesign --verify --deep --strict --verbose=2 dist/DragShift.app
-          ditto -c -k --keepParent dist/DragShift.app DragShift.zip
-          xcrun notarytool submit DragShift.zip --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
-          xcrun stapler staple dist/DragShift.app
-          spctl --assess --type execute --verbose dist/DragShift.app
+          codesign --force --deep --timestamp --options runtime --entitlements installer/entitlements.plist --sign "$MACOS_SIGN_IDENTITY" dist/Orbit.app
+          codesign --verify --deep --strict --verbose=2 dist/Orbit.app
+          ditto -c -k --keepParent dist/Orbit.app Orbit.zip
+          xcrun notarytool submit Orbit.zip --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple dist/Orbit.app
+          spctl --assess --type execute --verbose dist/Orbit.app
           echo "SIGNED=1" >> $GITHUB_ENV
 
-      - name: Make the .dmg (drag DragShift to Applications)
+      - name: Make the .dmg (drag Orbit to Applications)
         run: |
           mkdir -p dmg
-          cp -R dist/DragShift.app dmg/
+          cp -R dist/Orbit.app dmg/
           ln -s /Applications dmg/Applications
-          hdiutil create -volname "DragShift" -srcfolder dmg -ov -format UDZO "dist/DragShift-mac-${{ matrix.arch }}.dmg"
-          du -h "dist/DragShift-mac-${{ matrix.arch }}.dmg"
+          hdiutil create -volname "Orbit" -srcfolder dmg -ov -format UDZO "dist/Orbit-mac-${{ matrix.arch }}.dmg"
+          du -h "dist/Orbit-mac-${{ matrix.arch }}.dmg"
           if [ "$SIGNED" = "1" ]; then
-            codesign --force --timestamp --sign "${{ secrets.MACOS_SIGN_IDENTITY }}" "dist/DragShift-mac-${{ matrix.arch }}.dmg"
-            xcrun notarytool submit "dist/DragShift-mac-${{ matrix.arch }}.dmg" --apple-id "${{ secrets.APPLE_ID }}" --password "${{ secrets.APPLE_APP_PASSWORD }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --wait
-            xcrun stapler staple "dist/DragShift-mac-${{ matrix.arch }}.dmg"
+            codesign --force --timestamp --sign "${{ secrets.MACOS_SIGN_IDENTITY }}" "dist/Orbit-mac-${{ matrix.arch }}.dmg"
+            xcrun notarytool submit "dist/Orbit-mac-${{ matrix.arch }}.dmg" --apple-id "${{ secrets.APPLE_ID }}" --password "${{ secrets.APPLE_APP_PASSWORD }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --wait
+            xcrun stapler staple "dist/Orbit-mac-${{ matrix.arch }}.dmg"
           fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: mac-${{ matrix.arch }}
-          path: dist/DragShift-mac-${{ matrix.arch }}.dmg
+          path: dist/Orbit-mac-${{ matrix.arch }}.dmg
 
   publish:
     needs: [windows, macos]
@@ -203,22 +203,21 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: DragShift (latest build)
+          name: Orbit (latest build)
           make_latest: true
           body: |
             **Windows**
-            - **DragShift-Setup.exe** — recommended. Per-user install (no admin), Start menu, start with Windows, right-click "DragShift…" and Send To.
-            - **DragShift.exe** — portable.
+            - **Orbit-Setup.exe** — recommended. Per-user install (no admin), Start menu, start with Windows, right-click "Orbit…" and Send To.
+            - **Orbit.exe** — portable.
 
             **Mac** (macOS 11+)
-            - **DragShift-mac-apple-silicon.dmg** — M1/M2/M3/M4 Macs.
-            - **DragShift-mac-intel.dmg** — Intel Macs.
-            Open the .dmg and drag DragShift to Applications.
-            **First launch (until DragShift is notarized by Apple):** open DragShift once and click **Done** on the warning, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to "DragShift was blocked", and confirm. You only do this once.
-            Or in Terminal: `xattr -dr com.apple.quarantine /Applications/DragShift.app`
+            - **Orbit-mac-apple-silicon.dmg** — M1/M2/M3/M4 Macs.
+            - **Orbit-mac-intel.dmg** — Intel Macs.
+            Open the .dmg and drag Orbit to Applications.
+            **First launch (until Orbit is notarized by Apple):** open Orbit once and click **Done** on the warning, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to "Orbit was blocked", and confirm. You only do this once.
+            Or in Terminal: `xattr -dr com.apple.quarantine /Applications/Orbit.app`
 
-            Enjoying DragShift? Tips are welcome: [Cash App $AtikaKadesha](https://cash.app/$AtikaKadesha) ♥
-
+            
             Built automatically from commit ${{ github.sha }}.
           files: out/*
 

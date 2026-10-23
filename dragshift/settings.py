@@ -15,7 +15,7 @@ from .window import GlassWindow, Switch, form_card
 
 IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
-APP = "DragShift"
+APP = "Orbit"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 DEFAULTS = {
@@ -94,7 +94,7 @@ def set_autostart(on: bool):
 
 TRIGGERS = ([("shift", "Shift ⇧"), ("ctrl", "Control ⌃"), ("alt", "Option ⌥")] if IS_MAC
             else [("shift", "Shift"), ("ctrl", "Ctrl"), ("alt", "Alt")])
-OUTPUTS = [("next", "Next to original"), ("folder", "DragShift folder")]
+OUTPUTS = [("next", "Next to original"), ("folder", "Orbit folder")]
 DPIS = [(150, "150 dpi"), (200, "200 dpi"), (300, "300 dpi")]
 
 
@@ -152,7 +152,7 @@ class SettingsWindow(GlassWindow):
         if rows:
             self.body.addWidget(form_card(rows))
         self.body.addStretch(1)
-        about = QLabel(f"DragShift {__version__}")
+        about = QLabel(f"Orbit {__version__}")
         about.setObjectName("dim")
         foot = QHBoxLayout()
         foot.addWidget(about)
@@ -200,7 +200,7 @@ class WelcomeWindow(GlassWindow):
             pm.setDevicePixelRatio(2.0)
             icon.setPixmap(pm)
         self.body.addWidget(icon)
-        head = QLabel("Welcome to DragShift")
+        head = QLabel("Welcome to Orbit")
         head.setObjectName("heading")
         head.setAlignment(Qt.AlignCenter)
         self.body.addWidget(head)
