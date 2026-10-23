@@ -90,8 +90,9 @@ def friendly_error(e: Exception) -> str:
 
 
 # ---------------------------------------------------------------- icon
-def make_tray_icon() -> QIcon:
-    """macOS menu bar wants a monochrome 'template' image; Windows gets the colour icon."""
+def make_tray_icon(step: int | None = None) -> QIcon:
+    """macOS menu bar wants a monochrome 'template' image; Windows gets the colour icon.
+    step: while something runs, the ring of dots fades around like Apple's activity indicator."""
     if not IS_MAC:
         return make_icon()
     pm = QPixmap(44, 44)
@@ -104,7 +105,10 @@ def make_tray_icon() -> QIcon:
     p.drawEllipse(QPointF(22, 22), 11, 11)
     for i in range(8):
         a = math.radians(90 - i * 45)
+        if step is not None:
+            p.setOpacity(1.0 - 0.8 * (((step - i) % 8) / 8))
         p.drawEllipse(QPointF(22 + 19 * math.cos(a), 22 - 19 * math.sin(a)), 2.4, 2.4)
+    p.setOpacity(1.0)
     p.setCompositionMode(QPainter.CompositionMode_Clear)
     p.drawPolygon(QPolygonF([QPointF(22, 14), QPointF(29, 21.5), QPointF(25, 21.5), QPointF(25, 28.5),
                              QPointF(19, 28.5), QPointF(19, 21.5), QPointF(15, 21.5)]))
@@ -161,6 +165,10 @@ class DragShiftApp(QObject):
         self.server.newConnection.connect(self._ipc)
 
         self.tray = QSystemTrayIcon(make_tray_icon(), self)
+        self._busy = 0                     # background actions running
+        self._busy_step = 0
+        self._busy_frames = [make_tray_icon(i) for i in range(8)] if IS_MAC else []
+        self._busy_timer = QTimer(self, interval=110, timeout=self._spin_tray)
         self.tray.setToolTip(f"{APP_NAME}: press {self.trigger_label()} while dragging a file")
         m = QMenu()
         m.setStyleSheet(glass.qss())
@@ -316,20 +324,38 @@ class DragShiftApp(QObject):
         names = Path(srcs[0]).name if len(srcs) == 1 else f"{len(srcs)} files"
         print(f"{working} {names}", flush=True)
         job = Job(action, srcs, fn, extra)
+        self._set_busy(+1)
 
         def done(r):
             release(job)
+            self._set_busy(-1)
             if r.copy:
                 QGuiApplication.clipboard().setText(r.copy)
             print(f"done: {r.title} {r.detail}".rstrip(), flush=True)
 
         def failed(msg):
             release(job)
+            self._set_busy(-1)
             self.alert(f"Couldn't finish {action}: {msg}")
 
         job.sig.done.connect(done)
         job.sig.failed.connect(failed)
         self.pool.start(keep(job))
+
+    def _set_busy(self, delta: int):
+        """While anything runs, the menu bar icon's dots spin (there are no notifications)."""
+        self._busy = max(0, self._busy + delta)
+        if not self._busy_frames:
+            return
+        if self._busy and not self._busy_timer.isActive():
+            self._busy_timer.start()
+        elif not self._busy:
+            self._busy_timer.stop()
+            self.tray.setIcon(make_tray_icon())
+
+    def _spin_tray(self):
+        self._busy_step = (self._busy_step + 1) % 8
+        self.tray.setIcon(self._busy_frames[self._busy_step])
 
     def notify(self, action: str, srcs: list, outs: list, extra: str = ""):
         """Called by tool windows after they save (nothing is shown; it goes to the log)."""

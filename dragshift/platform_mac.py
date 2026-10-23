@@ -207,13 +207,28 @@ def symbol_png(name: str, px: int, weight: str = "regular") -> bytes | None:
 
 # ---------------------------------------------------------------- on-device Vision
 def _cgimage(im):
-    """A PIL image as a CGImage, for Vision."""
-    import io
-    buf = io.BytesIO()
-    im.save(buf, "PNG")
-    data = buf.getvalue()
-    src = Quartz.CGImageSourceCreateWithData(AppKit.NSData.dataWithBytes_length_(data, len(data)), None)
-    return Quartz.CGImageSourceCreateImageAtIndex(src, 0, None)
+    """A PIL image as an sRGB CGImage for Vision, straight from its pixels (no encoding)."""
+    rgb = im.convert("RGB")
+    w, h = rgb.size
+    data = rgb.tobytes()
+    provider = Quartz.CGDataProviderCreateWithCFData(AppKit.NSData.dataWithBytes_length_(data, len(data)))
+    return Quartz.CGImageCreate(w, h, 8, 24, w * 3, Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceSRGB),
+                                Quartz.kCGImageAlphaNone, provider, None, False, Quartz.kCGRenderingIntentDefault)
+
+
+def _mask_image(buf):
+    """Vision's one-channel float mask (a CVPixelBuffer) as a PIL "L" image, read directly."""
+    import numpy as np
+    from PIL import Image
+    Quartz.CVPixelBufferLockBaseAddress(buf, Quartz.kCVPixelBufferLock_ReadOnly)
+    try:
+        w, h = Quartz.CVPixelBufferGetWidth(buf), Quartz.CVPixelBufferGetHeight(buf)
+        row = Quartz.CVPixelBufferGetBytesPerRow(buf)
+        raw = Quartz.CVPixelBufferGetBaseAddress(buf).as_buffer(row * h)
+        a = np.frombuffer(raw, dtype=np.float32).reshape(h, row // 4)[:, :w]
+        return Image.fromarray((np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8), "L")
+    finally:
+        Quartz.CVPixelBufferUnlockBaseAddress(buf, Quartz.kCVPixelBufferLock_ReadOnly)
 
 
 def _vision(name: str):
@@ -236,11 +251,9 @@ def can_read_text() -> bool:
 def subject_mask(im):
     """Mask (PIL "L", same size as `im`) of the picture's subject, found by Apple's on-device
     Vision, as in Photos' "lift subject"; None if there's no clear subject."""
-    import io
-
     import Vision
     from PIL import Image
-    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(_cgimage(im.convert("RGB")), {})
+    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(_cgimage(im), {})
     req = Vision.VNGenerateForegroundInstanceMaskRequest.alloc().init()
     ok, err = handler.performRequests_error_([req], None)
     if not ok:
@@ -252,18 +265,14 @@ def subject_mask(im):
     buf, err = obs.generateScaledMaskForImageForInstances_fromRequestHandler_error_(obs.allInstances(), handler, None)
     if buf is None:
         raise RuntimeError(f"Vision couldn't make the mask: {err}")
-    ci = Quartz.CIImage.imageWithCVPixelBuffer_(buf)
-    cg = Quartz.CIContext.contextWithOptions_(None).createCGImage_fromRect_(ci, ci.extent())
-    png = AppKit.NSBitmapImageRep.alloc().initWithCGImage_(cg).representationUsingType_properties_(
-        AppKit.NSBitmapImageFileTypePNG, {})
-    mask = Image.open(io.BytesIO(bytes(png))).convert("L")
+    mask = _mask_image(buf)
     return mask if mask.size == im.size else mask.resize(im.size, Image.LANCZOS)
 
 
 def recognize_text(im) -> str:
     """Text in a picture, read by Apple's on-device Vision (Live Text), in reading order."""
     import Vision
-    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(_cgimage(im.convert("RGB")), {})
+    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(_cgimage(im), {})
     req = Vision.VNRecognizeTextRequest.alloc().init()
     req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
     req.setUsesLanguageCorrection_(True)

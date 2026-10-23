@@ -124,7 +124,7 @@ def save_image(im: Image.Image, out: Path, target: str, quality: int | None = No
     if target == "JPG":
         kw.update(optimize=True, progressive=True)
     if target == "PNG":
-        kw["optimize"] = True
+        kw["optimize"] = im.width * im.height <= 4_000_000   # on big pictures it takes seconds for a few %
     if target == "ICO":
         side = min(256, max(im.size))
         im = ImageOps.contain(im.convert("RGBA"), (side, side))
