@@ -1,0 +1,42 @@
+[   0.02] macOS 15.7.9 screen (1024, 768)
+[  13.47] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[  13.78] measured blob offset (not applied): -1 -26
+[  26.02] PASS JPG → PNG                       10.1s  D-Photo.png · 2400×1600
+[  28.17] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[  38.61] PASS JPG → WEBP                       9.9s  D-Photo.webp · 2400×1600
+[  41.34] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[  52.06] PASS JPG → HEIC                      10.2s  D-Photo.heic · 2400×1600
+[  54.14] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[  63.45] PASS JPG → PDF                        8.7s  D-Photo.pdf · 1 page(s)
+[  65.60] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[  75.39] PASS PNG → JPG                        9.2s  D-Graphic.jpg · 800×533
+[  77.58] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[  87.48] PASS PDF → JPG (3 pages)              9.3s  3 × .jpg
+[  89.46] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[  98.75] PASS PDF → TXT                        8.8s  D-Report.txt
+[ 100.65] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 110.08] PASS DOCX → PDF                       8.9s  D-Letter.pdf · 1 page(s)
+[ 112.00] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 122.02] PASS PDF Split                        9.5s  3 PDFs
+[ 124.15] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 134.66] PASS PDF Rotate                       9.9s  all pages at 90°
+[ 136.49] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 147.77] PASS PDF Compress                    10.7s  227 KB → 108 KB
+[ 149.76] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 164.19] PASS Merge 2 PDFs                    13.9s  5 pages
+[ 166.20] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 178.95] PASS Compress (window, Enter)        12.2s  354 KB → 112 KB
+[ 180.81] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 193.65] PASS Resize 50% (window, Enter)      12.3s  2400×1600 → 1200×800
+[ 195.60] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 209.07] PASS Add BG (window, Enter)          12.9s  800×533 → 992×725
+[ 211.21] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 224.16] PASS Metadata: remove all (Enter)    12.4s  0 metadata fields left
+[ 226.39] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 238.92] PASS Remove BG (Vision)              12.0s  D-Subject No Background.png: background transparent, subject kept
+[ 241.34] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 252.99] PASS Copy Text from image (Vision)   10.9s  copied 9 words incl. Quarterly, Revenue
+[ 255.28] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 264.23] PASS Copy Text from PDF               8.4s  copied 264 words incl. 
+[ 266.51] icon positions (screen): {'D-Photo.jpg': (140, 148), 'D-Report.pdf': (140, 263), 'D-Appendix.pdf': (140, 378), 'D-Letter.docx': (140, 493), 'D-Graphic.png': (140, 608), 'D-Subject.jpg': (270, 148), 'D-Scan.png': (270, 263)}
+[ 267.36] DONE 19/19
