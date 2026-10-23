@@ -45,9 +45,18 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
+          $log = "$env:LOCALAPPDATA\DragShift\log.txt"
           foreach ($exe in @("dist\DragShift\DragShift.exe", "dist\DragShift.exe")) {
-            $p = Start-Process -FilePath $exe -ArgumentList "--selftest" -Wait -PassThru
-            if ($p.ExitCode -ne 0) { throw "Self-test failed for $exe ($($p.ExitCode))" }
+            $p = Start-Process -FilePath $exe -ArgumentList "--selftest" -PassThru
+            if (-not $p.WaitForExit(180000)) {   # never hang on an error dialog
+              $p.Kill()
+              if (Test-Path $log) { Get-Content $log -Tail 80 }
+              throw "Self-test hung for $exe"
+            }
+            if ($p.ExitCode -ne 0) {
+              if (Test-Path $log) { Get-Content $log -Tail 80 }
+              throw "Self-test failed for $exe ($($p.ExitCode))"
+            }
             "Self-test passed: $exe"
           }
           "{0:N1} MB portable" -f ((Get-Item dist\DragShift.exe).Length / 1MB)
@@ -123,7 +132,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          dist/DragShift.app/Contents/MacOS/DragShift --selftest
+          dist/DragShift.app/Contents/MacOS/DragShift --selftest || { tail -80 ~/Library/Logs/DragShift/log.txt; exit 1; }
           codesign --verify --deep --verbose=2 dist/DragShift.app || true
           /usr/libexec/PlistBuddy -c "Print :LSUIElement" dist/DragShift.app/Contents/Info.plist
 
