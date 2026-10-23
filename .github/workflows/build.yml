@@ -173,7 +173,11 @@ jobs:
           mkdir -p dmg
           cp -R dist/Orbit.app dmg/
           ln -s /Applications dmg/Applications
-          hdiutil create -volname "Orbit" -srcfolder dmg -ov -format UDZO "dist/Orbit-mac-${{ matrix.arch }}.dmg"
+          for i in 1 2 3 4 5; do   # GitHub's Macs sometimes report "Resource busy": try again
+            hdiutil create -volname "Orbit" -srcfolder dmg -ov -format UDZO "dist/Orbit-mac-${{ matrix.arch }}.dmg" && break
+            [ "$i" = 5 ] && exit 1
+            sleep $((i * 5))
+          done
           du -h "dist/Orbit-mac-${{ matrix.arch }}.dmg"
           if [ "$SIGNED" = "1" ]; then
             codesign --force --timestamp --sign "${{ secrets.MACOS_SIGN_IDENTITY }}" "dist/Orbit-mac-${{ matrix.arch }}.dmg"
